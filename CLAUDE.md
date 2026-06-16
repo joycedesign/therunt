@@ -78,6 +78,7 @@ Row-level security (RLS) will be enabled on every table.
 | email | text unique | used for magic-link auth |
 | name | text | full name |
 | preferred_name | text | what we show in the UI |
+| membership_number | text, nullable | Manly GC member number (guests/blockers have none) |
 | phone | text, nullable | optional |
 | status | enum(`active`,`inactive`,`blocked`) | |
 | default_available | boolean default false | pre-fills availability for newly-added weeks |

@@ -40,6 +40,20 @@ overall build order.
 - Likely schema: `players.default_available boolean`; when weeks are created,
   auto-create each active player's `availability` row using their default.
 
+## From the real roster (shared Jun 2026)
+
+4. **Import the existing members** — ~20 players given as shortname + Manly GC
+   membership number (e.g. "Brian 6221", "Stevo 2755"). Need an organiser way to
+   pre-add members before they sign up.
+   - ⚠️ Constraint: `players.email` is currently `NOT NULL UNIQUE`. Pre-adding
+     members without an email needs `email` made nullable (and the signup
+     trigger then links by name/membership instead of only email).
+   - `players.membership_number` field — ✅ **done** (migration 0007).
+
+5. **Play morning / afternoon preference** — roster had "Play morning" / "Play
+   arvo" notes per week. Likely a per-availability or per-week time preference
+   the draw/booking can use.
+
 ## Decisions (folded into CLAUDE.md)
 - **Draw timing:** **4:05pm, 8 days before** the Saturday (5 min after the 4pm
   confirm deadline that shipped in Phase 2). Supersedes the old "Friday 6pm".

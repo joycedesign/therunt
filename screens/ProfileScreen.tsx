@@ -25,6 +25,7 @@ type Props = {
 export default function ProfileScreen({ player, email, onProfileSaved }: Props) {
   const [name, setName] = useState('');
   const [preferredName, setPreferredName] = useState('');
+  const [membershipNumber, setMembershipNumber] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
   useEffect(() => {
     setName(player?.name ?? '');
     setPreferredName(player?.preferred_name ?? '');
+    setMembershipNumber(player?.membership_number ?? '');
     setDefaultAvail(player?.default_available ?? false);
   }, [player]);
 
@@ -62,7 +64,11 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
     setSaved(false);
     const { error } = await supabase
       .from('players')
-      .update({ name: name.trim(), preferred_name: preferredName.trim() })
+      .update({
+        name: name.trim(),
+        preferred_name: preferredName.trim(),
+        membership_number: membershipNumber.trim() || null,
+      })
       .eq('id', player.id);
     setBusy(false);
     if (error) {
@@ -95,6 +101,17 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
         placeholderTextColor="#7fa392"
         value={preferredName}
         onChangeText={setPreferredName}
+        editable={!busy}
+      />
+
+      <Text style={styles.fieldLabel}>Manly GC membership number</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="e.g. 6221"
+        placeholderTextColor="#7fa392"
+        keyboardType="number-pad"
+        value={membershipNumber}
+        onChangeText={setMembershipNumber}
         editable={!busy}
       />
 

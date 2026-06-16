@@ -12,6 +12,7 @@ export type Player = {
   email: string;
   name: string;
   preferred_name: string | null;
+  membership_number: string | null;
   status: 'active' | 'inactive' | 'blocked';
   default_available: boolean;
 };
@@ -52,7 +53,7 @@ export function useAuth(): AuthState {
     }
     const { data } = await supabase
       .from('players')
-      .select('id, email, name, preferred_name, status, default_available')
+      .select('id, email, name, preferred_name, membership_number, status, default_available')
       .eq('auth_user_id', userId)
       .maybeSingle();
     setPlayer((data as Player | null) ?? null);
