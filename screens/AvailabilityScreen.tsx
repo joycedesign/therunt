@@ -179,11 +179,6 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                   activeOpacity={0.7}
                 >
                   <Text style={styles.date}>{formatSaturday(w.start_date)}</Text>
-                  {w.booking_deadline && (
-                    <Text style={styles.deadline}>
-                      Confirm by {formatDeadline(w.booking_deadline)}
-                    </Text>
-                  )}
                   <Text style={styles.count}>
                     {inList.length} in {isOpen ? '▲' : '▼'}
                   </Text>
@@ -200,12 +195,17 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
               </View>
               {isOpen && (
                 <View style={styles.rosterBox}>
+                  {w.booking_deadline && (
+                    <Text style={styles.deadline}>
+                      Confirm by {formatDeadline(w.booking_deadline)}
+                    </Text>
+                  )}
                   {inList.length === 0 ? (
                     <Text style={styles.rosterEmpty}>No one in yet.</Text>
                   ) : (
                     inList.map((nm, i) => (
                       <Text key={i} style={styles.rosterName}>
-                        • {nm}
+                        {i + 1}. {nm}
                       </Text>
                     ))
                   )}
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, paddingRight: 12 },
   date: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
-  deadline: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
+  deadline: { color: '#9fc6b3', fontSize: 12, marginBottom: 8 },
   count: { color: '#7fffb0', fontSize: 12, marginTop: 4, fontWeight: '600' },
   rosterBox: {
     marginTop: 12,
