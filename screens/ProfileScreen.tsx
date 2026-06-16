@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -28,10 +29,31 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [defaultAvail, setDefaultAvail] = useState(false);
+  const [defBusy, setDefBusy] = useState(false);
+
   useEffect(() => {
     setName(player?.name ?? '');
     setPreferredName(player?.preferred_name ?? '');
+    setDefaultAvail(player?.default_available ?? false);
   }, [player]);
+
+  async function changeDefault(value: boolean) {
+    if (!supabase) return;
+    setDefBusy(true);
+    setError(null);
+    setDefaultAvail(value); // optimistic
+    const { error } = await supabase.rpc('set_default_availability', {
+      p_default: value,
+    });
+    setDefBusy(false);
+    if (error) {
+      setError(error.message);
+      setDefaultAvail(!value); // revert
+      return;
+    }
+    onProfileSaved();
+  }
 
   async function save() {
     if (!supabase || !player) return;
@@ -89,6 +111,33 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
       </TouchableOpacity>
 
       {saved && <Text style={styles.saved}>✅ Saved.</Text>}
+
+      <View style={styles.divider} />
+
+      <Text style={styles.label}>Default availability</Text>
+      <Text style={styles.help}>
+        {defaultAvail
+          ? "You're In by default — this sets all upcoming Saturdays to In. Just switch off the dates you can't make."
+          : "You're Out by default — switch this on if you play most weeks, then deselect the dates you can't make."}
+      </Text>
+      <View style={styles.defaultRow}>
+        <Text style={styles.defaultState}>
+          {defaultAvail ? 'Playing most weeks' : 'Not playing by default'}
+        </Text>
+        {defBusy ? (
+          <ActivityIndicator color="#7fffb0" />
+        ) : (
+          <Switch
+            value={defaultAvail}
+            onValueChange={changeDefault}
+            trackColor={{ false: '#ef4444', true: '#22c55e' }}
+            thumbColor="#ffffff"
+            ios_backgroundColor="#ef4444"
+            {...({ activeThumbColor: '#ffffff' } as object)}
+          />
+        )}
+      </View>
+
       {error && <Text style={styles.error}>⚠️ {error}</Text>}
     </View>
   );
@@ -122,4 +171,17 @@ const styles = StyleSheet.create({
   buttonText: { color: '#0b3d2e', fontSize: 16, fontWeight: '700' },
   saved: { color: '#7fffb0', marginTop: 14, fontSize: 14 },
   error: { color: '#ffd2d2', marginTop: 14, fontSize: 14 },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginVertical: 20,
+  },
+  help: { color: '#9fc6b3', fontSize: 13, lineHeight: 18, marginTop: 6 },
+  defaultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+  },
+  defaultState: { color: '#ffffff', fontSize: 15, flex: 1, paddingRight: 12 },
 });

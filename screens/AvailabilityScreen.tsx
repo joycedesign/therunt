@@ -76,7 +76,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     const { error } = await supabase
       .from('availability')
       .upsert(
-        { week_id: weekId, player_id: player.id, is_available: value },
+        { week_id: weekId, player_id: player.id, is_available: value, is_explicit: true },
         { onConflict: 'week_id,player_id' }
       );
     if (error) {
