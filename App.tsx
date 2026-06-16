@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
 import SignInScreen from './screens/SignInScreen';
-import HomeScreen from './screens/HomeScreen';
+import SignedIn from './screens/SignedIn';
 
 export default function App() {
   const { loading, session, player, refreshPlayer } = useAuth();
@@ -29,10 +29,10 @@ export default function App() {
   return (
     <>
       {session ? (
-        <HomeScreen
+        <SignedIn
           player={player}
           email={session.user.email ?? ''}
-          onProfileSaved={refreshPlayer}
+          refreshPlayer={refreshPlayer}
         />
       ) : (
         <SignInScreen />
