@@ -63,6 +63,30 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     void load().finally(() => setLoading(false));
   }, [load]);
 
+  // Live sync: reload whenever this player's availability changes anywhere.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !player) return;
+    const channel = client
+      .channel(`availability-${player.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'availability',
+          filter: `player_id=eq.${player.id}`,
+        },
+        () => {
+          void load();
+        }
+      )
+      .subscribe();
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [player, load]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load();

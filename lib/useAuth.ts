@@ -62,6 +62,31 @@ export function useAuth(): AuthState {
     void loadPlayer(session?.user.id);
   }, [session, loadPlayer]);
 
+  // Live sync: keep the profile (incl. default_available) current across devices.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !session) return;
+    const userId = session.user.id;
+    const channel = client
+      .channel(`player-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'players',
+          filter: `auth_user_id=eq.${userId}`,
+        },
+        () => {
+          void loadPlayer(userId);
+        }
+      )
+      .subscribe();
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [session, loadPlayer]);
+
   const refreshPlayer = useCallback(
     () => loadPlayer(session?.user.id),
     [loadPlayer, session]
