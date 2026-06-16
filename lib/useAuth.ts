@@ -19,6 +19,7 @@ export type Player = {
 
 export type AuthState = {
   loading: boolean;
+  checkingProfile: boolean;
   session: Session | null;
   player: Player | null;
   refreshPlayer: () => Promise<void>;
@@ -26,6 +27,7 @@ export type AuthState = {
 
 export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
+  const [checkingProfile, setCheckingProfile] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
 
@@ -59,8 +61,15 @@ export function useAuth(): AuthState {
     setPlayer((data as Player | null) ?? null);
   }, []);
 
+  // On session change, (re)check whether this user has a linked profile.
   useEffect(() => {
-    void loadPlayer(session?.user.id);
+    if (!session) {
+      setPlayer(null);
+      setCheckingProfile(false);
+      return;
+    }
+    setCheckingProfile(true);
+    void loadPlayer(session.user.id).finally(() => setCheckingProfile(false));
   }, [session, loadPlayer]);
 
   // Live sync: keep the profile (incl. default_available) current across devices.
@@ -93,5 +102,5 @@ export function useAuth(): AuthState {
     [loadPlayer, session]
   );
 
-  return { loading, session, player, refreshPlayer };
+  return { loading, checkingProfile, session, player, refreshPlayer };
 }

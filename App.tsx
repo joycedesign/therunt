@@ -3,10 +3,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
 import SignInScreen from './screens/SignInScreen';
+import OnboardingScreen from './screens/OnboardingScreen';
 import SignedIn from './screens/SignedIn';
 
 export default function App() {
-  const { loading, session, player, refreshPlayer } = useAuth();
+  const { loading, checkingProfile, session, player, refreshPlayer } = useAuth();
 
   if (!isSupabaseConfigured) {
     return (
@@ -18,7 +19,7 @@ export default function App() {
     );
   }
 
-  if (loading) {
+  if (loading || (session && checkingProfile)) {
     return (
       <Centered>
         <ActivityIndicator color="#7fffb0" size="large" />
@@ -26,17 +27,21 @@ export default function App() {
     );
   }
 
+  function content() {
+    if (!session) return <SignInScreen />;
+    if (!player) return <OnboardingScreen onDone={refreshPlayer} />;
+    return (
+      <SignedIn
+        player={player}
+        email={session.user.email ?? ''}
+        refreshPlayer={refreshPlayer}
+      />
+    );
+  }
+
   return (
     <>
-      {session ? (
-        <SignedIn
-          player={player}
-          email={session.user.email ?? ''}
-          refreshPlayer={refreshPlayer}
-        />
-      ) : (
-        <SignInScreen />
-      )}
+      {content()}
       <StatusBar style="light" />
     </>
   );
