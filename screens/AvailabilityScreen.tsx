@@ -283,7 +283,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       await runDraw(weekId);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errMsg(e));
     } finally {
       setDrawBusy(null);
     }
@@ -296,7 +296,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       await resetDraw(weekId);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errMsg(e));
     } finally {
       setDrawBusy(null);
     }
@@ -509,6 +509,15 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       </Modal>
     </>
   );
+}
+
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object') {
+    const o = e as { message?: unknown; details?: unknown; hint?: unknown };
+    return String(o.message ?? o.details ?? o.hint ?? JSON.stringify(e));
+  }
+  return String(e);
 }
 
 function formatSaturday(isoDate: string): string {
