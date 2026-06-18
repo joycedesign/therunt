@@ -37,10 +37,11 @@ times manually, then scrape results to crown each week's "Runt".
 
 1. **Foundation** — auth, player profiles, database schema. ✅ *done*
 2. **Weekly availability** — players nominate which Saturdays they're in.
-   ← *current* (core shipped; guests, who's-in roster, and default availability
-   still to add — see [docs/BACKLOG.md](docs/BACKLOG.md)).
-3. **Random draw** — at 4:05pm, 8 days before: groups of 2–4, short groups padded
-   with blockers; guests stay with their host.
+   ✅ *done* (incl. guests, who's-in roster, default availability, real-time
+   sync, member import/invite — see [docs/BACKLOG.md](docs/BACKLOG.md)).
+3. **Random draw** — groups of 2–4, short groups padded with blockers; guests
+   stay with their host. ← *current*: manual **Randomize/Reset** shipped;
+   still to do: auto-run at 4:05pm (8 days before) via pg_cron.
 4. **Results + Runt** — scrape MiScore, set winner/loser, assign next Runt,
    leaderboard/stats.
 5. **Manual booking** — Runt records tee times and marks groups booked → **ship v1**.
