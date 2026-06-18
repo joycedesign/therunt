@@ -1,8 +1,8 @@
 // Members management for The Runt (shown under the "Members" tab).
 //
-// Add/edit/remove members (name, shortname, Manly GC number) so the organiser
-// doesn't need SQL. Members who have signed up ("claimed") are shown read-only
-// here — they manage their own profile.
+// Add/edit/remove members (name, shortname, Manly GC number), and invite people
+// to the app via email or a QR code. Members who have signed up ("claimed")
+// are read-only here — they manage their own profile.
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -16,14 +16,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '../lib/supabase';
+import { INVITE_URL } from '../lib/config';
 
 type Member = {
   id: string;
   name: string;
   preferred_name: string | null;
   membership_number: string | null;
-  email: string | null;
   auth_user_id: string | null;
 };
 
@@ -33,21 +34,27 @@ export default function MembersScreen() {
   const [members, setMembers] = useState<Member[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Add / edit modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fName, setFName] = useState('');
   const [fShort, setFShort] = useState('');
   const [fNumber, setFNumber] = useState('');
-  const [fEmail, setFEmail] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Invite modal
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviteErr, setInviteErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
     setError(null);
     const { data, error } = await supabase
       .from('players')
-      .select('id, name, preferred_name, membership_number, email, auth_user_id')
+      .select('id, name, preferred_name, membership_number, auth_user_id')
       .order('preferred_name', { nullsFirst: false })
       .order('name');
     if (error) {
@@ -87,9 +94,7 @@ export default function MembersScreen() {
     setFName('');
     setFShort('');
     setFNumber('');
-    setFEmail('');
     setError(null);
-    setInviteMsg(null);
     setModalOpen(true);
   }
 
@@ -98,10 +103,15 @@ export default function MembersScreen() {
     setFName(m.name);
     setFShort(m.preferred_name ?? '');
     setFNumber(m.membership_number ?? '');
-    setFEmail(m.email ?? '');
     setError(null);
-    setInviteMsg(null);
     setModalOpen(true);
+  }
+
+  function openInvite() {
+    setInviteEmail('');
+    setInviteMsg(null);
+    setInviteErr(null);
+    setInviteOpen(true);
   }
 
   async function save() {
@@ -119,7 +129,6 @@ export default function MembersScreen() {
       name: name || short,
       preferred_name: short || name,
       membership_number: number || null,
-      email: fEmail.trim().toLowerCase() || null,
     };
     const resp = editingId
       ? await supabase.from('players').update(fields).eq('id', editingId)
@@ -137,39 +146,6 @@ export default function MembersScreen() {
     void load();
   }
 
-  async function sendInvite() {
-    if (!supabase || !editingId) return;
-    const email = fEmail.trim().toLowerCase();
-    if (!email.includes('@')) {
-      setError('Enter a valid email to invite.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setInviteMsg(null);
-    // Store the email on the member (so they auto-link on first sign-in)...
-    const up = await supabase.from('players').update({ email }).eq('id', editingId);
-    if (up.error) {
-      setBusy(false);
-      setError(
-        up.error.message.includes('email') ? 'That email is already used.' : up.error.message
-      );
-      return;
-    }
-    // ...then email them a sign-in code so they can join.
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
-    });
-    setBusy(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setInviteMsg(`Invite sent to ${email}.`);
-    void load();
-  }
-
   async function remove() {
     if (!supabase || !editingId) return;
     setBusy(true);
@@ -182,6 +158,29 @@ export default function MembersScreen() {
     }
     setModalOpen(false);
     void load();
+  }
+
+  async function sendEmailInvite() {
+    if (!supabase) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email.includes('@')) {
+      setInviteErr('Enter a valid email.');
+      return;
+    }
+    setInviteBusy(true);
+    setInviteErr(null);
+    setInviteMsg(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    setInviteBusy(false);
+    if (error) {
+      setInviteErr(error.message);
+      return;
+    }
+    setInviteMsg(`Invite sent to ${email}.`);
+    setInviteEmail('');
   }
 
   if (loading) {
@@ -205,9 +204,14 @@ export default function MembersScreen() {
       >
         <View style={styles.headerRow}>
           <Text style={styles.heading}>Members ({members.length})</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
-            <Text style={styles.addBtnText}>+ Add</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity style={styles.ghostBtn} onPress={openInvite}>
+              <Text style={styles.ghostBtnText}>Invite</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+              <Text style={styles.addBtnText}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {error && !modalOpen && <Text style={styles.error}>⚠️ {error}</Text>}
@@ -239,6 +243,7 @@ export default function MembersScreen() {
         </Text>
       </ScrollView>
 
+      {/* Add / edit member */}
       <Modal
         visible={modalOpen}
         transparent
@@ -274,27 +279,6 @@ export default function MembersScreen() {
               onChangeText={setFNumber}
               editable={!busy}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Email (to invite them to the app)"
-              placeholderTextColor="#7fa392"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={fEmail}
-              onChangeText={setFEmail}
-              editable={!busy}
-            />
-            {editingId && !editingClaimed && (
-              <TouchableOpacity
-                style={[styles.inviteBtn, busy && styles.disabled]}
-                onPress={sendInvite}
-                disabled={busy}
-              >
-                <Text style={styles.inviteBtnText}>✉️  Send invite</Text>
-              </TouchableOpacity>
-            )}
-            {inviteMsg && <Text style={styles.invited}>✅ {inviteMsg}</Text>}
             {error && modalOpen && <Text style={styles.error}>⚠️ {error}</Text>}
             <View style={styles.modalButtons}>
               {editingId && !editingClaimed && (
@@ -321,6 +305,61 @@ export default function MembersScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Invite */}
+      <Modal
+        visible={inviteOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInviteOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Invite a member</Text>
+
+            <View style={styles.qrWrap}>
+              <QRCode value={INVITE_URL} size={172} backgroundColor="#ffffff" color="#0b3d2e" />
+            </View>
+            <Text style={styles.qrCaption}>Scan to join The Runt</Text>
+
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>or invite by email</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="their@email.com"
+              placeholderTextColor="#7fa392"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              editable={!inviteBusy}
+            />
+            <TouchableOpacity
+              style={[styles.saveBtn, styles.fullBtn, inviteBusy && styles.disabled]}
+              onPress={sendEmailInvite}
+              disabled={inviteBusy}
+            >
+              {inviteBusy ? (
+                <ActivityIndicator color="#0b3d2e" />
+              ) : (
+                <Text style={styles.saveBtnText}>Send email invite</Text>
+              )}
+            </TouchableOpacity>
+
+            {inviteMsg && <Text style={styles.invited}>✅ {inviteMsg}</Text>}
+            {inviteErr && <Text style={styles.error}>⚠️ {inviteErr}</Text>}
+
+            <TouchableOpacity onPress={() => setInviteOpen(false)} disabled={inviteBusy}>
+              <Text style={styles.closeLink}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -335,7 +374,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  heading: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+  heading: { color: '#ffffff', fontSize: 18, fontWeight: '700', flexShrink: 1 },
+  headerButtons: { flexDirection: 'row', gap: 8 },
+  ghostBtn: {
+    borderWidth: 1,
+    borderColor: '#7fffb0',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  ghostBtnText: { color: '#7fffb0', fontSize: 14, fontWeight: '700' },
   addBtn: {
     backgroundColor: '#7fffb0',
     borderRadius: 20,
@@ -383,16 +431,6 @@ const styles = StyleSheet.create({
     color: '#0b3d2e',
     marginBottom: 12,
   },
-  inviteBtn: {
-    borderWidth: 1,
-    borderColor: '#7fffb0',
-    borderRadius: 10,
-    paddingVertical: 11,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  inviteBtnText: { color: '#7fffb0', fontSize: 15, fontWeight: '600' },
-  invited: { color: '#7fffb0', fontSize: 13, marginBottom: 6 },
   modalButtons: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 4 },
   flexSpacer: { flex: 1 },
   delete: { color: '#ff9b9b', fontSize: 15, fontWeight: '600' },
@@ -402,7 +440,26 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 18,
+    alignItems: 'center',
   },
+  fullBtn: { marginBottom: 4 },
   disabled: { opacity: 0.6 },
   saveBtnText: { color: '#0b3d2e', fontSize: 15, fontWeight: '700' },
+  qrWrap: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    alignSelf: 'center',
+  },
+  qrCaption: {
+    color: '#bfe3d0',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 16 },
+  orLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.15)' },
+  orText: { color: '#9fc6b3', fontSize: 12 },
+  invited: { color: '#7fffb0', fontSize: 13, marginTop: 4 },
+  closeLink: { color: '#bfe3d0', fontSize: 15, textAlign: 'center', marginTop: 16 },
 });
