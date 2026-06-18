@@ -23,6 +23,7 @@ type Member = {
   name: string;
   preferred_name: string | null;
   membership_number: string | null;
+  email: string | null;
   auth_user_id: string | null;
 };
 
@@ -37,14 +38,16 @@ export default function MembersScreen() {
   const [fName, setFName] = useState('');
   const [fShort, setFShort] = useState('');
   const [fNumber, setFNumber] = useState('');
+  const [fEmail, setFEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
     setError(null);
     const { data, error } = await supabase
       .from('players')
-      .select('id, name, preferred_name, membership_number, auth_user_id')
+      .select('id, name, preferred_name, membership_number, email, auth_user_id')
       .order('preferred_name', { nullsFirst: false })
       .order('name');
     if (error) {
@@ -84,7 +87,9 @@ export default function MembersScreen() {
     setFName('');
     setFShort('');
     setFNumber('');
+    setFEmail('');
     setError(null);
+    setInviteMsg(null);
     setModalOpen(true);
   }
 
@@ -93,7 +98,9 @@ export default function MembersScreen() {
     setFName(m.name);
     setFShort(m.preferred_name ?? '');
     setFNumber(m.membership_number ?? '');
+    setFEmail(m.email ?? '');
     setError(null);
+    setInviteMsg(null);
     setModalOpen(true);
   }
 
@@ -112,6 +119,7 @@ export default function MembersScreen() {
       name: name || short,
       preferred_name: short || name,
       membership_number: number || null,
+      email: fEmail.trim().toLowerCase() || null,
     };
     const resp = editingId
       ? await supabase.from('players').update(fields).eq('id', editingId)
@@ -126,6 +134,39 @@ export default function MembersScreen() {
       return;
     }
     setModalOpen(false);
+    void load();
+  }
+
+  async function sendInvite() {
+    if (!supabase || !editingId) return;
+    const email = fEmail.trim().toLowerCase();
+    if (!email.includes('@')) {
+      setError('Enter a valid email to invite.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setInviteMsg(null);
+    // Store the email on the member (so they auto-link on first sign-in)...
+    const up = await supabase.from('players').update({ email }).eq('id', editingId);
+    if (up.error) {
+      setBusy(false);
+      setError(
+        up.error.message.includes('email') ? 'That email is already used.' : up.error.message
+      );
+      return;
+    }
+    // ...then email them a sign-in code so they can join.
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setInviteMsg(`Invite sent to ${email}.`);
     void load();
   }
 
@@ -233,6 +274,27 @@ export default function MembersScreen() {
               onChangeText={setFNumber}
               editable={!busy}
             />
+            <TextInput
+              style={styles.input}
+              placeholder="Email (to invite them to the app)"
+              placeholderTextColor="#7fa392"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={fEmail}
+              onChangeText={setFEmail}
+              editable={!busy}
+            />
+            {editingId && !editingClaimed && (
+              <TouchableOpacity
+                style={[styles.inviteBtn, busy && styles.disabled]}
+                onPress={sendInvite}
+                disabled={busy}
+              >
+                <Text style={styles.inviteBtnText}>✉️  Send invite</Text>
+              </TouchableOpacity>
+            )}
+            {inviteMsg && <Text style={styles.invited}>✅ {inviteMsg}</Text>}
             {error && modalOpen && <Text style={styles.error}>⚠️ {error}</Text>}
             <View style={styles.modalButtons}>
               {editingId && !editingClaimed && (
@@ -321,6 +383,16 @@ const styles = StyleSheet.create({
     color: '#0b3d2e',
     marginBottom: 12,
   },
+  inviteBtn: {
+    borderWidth: 1,
+    borderColor: '#7fffb0',
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  inviteBtnText: { color: '#7fffb0', fontSize: 15, fontWeight: '600' },
+  invited: { color: '#7fffb0', fontSize: 13, marginBottom: 6 },
   modalButtons: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 4 },
   flexSpacer: { flex: 1 },
   delete: { color: '#ff9b9b', fontSize: 15, fontWeight: '600' },

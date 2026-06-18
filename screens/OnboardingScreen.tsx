@@ -4,7 +4,7 @@
 // Manly GC membership number to claim their pre-added member profile; if the
 // number isn't found, a fresh profile is created (new members / non-members).
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -18,7 +18,34 @@ import { supabase } from '../lib/supabase';
 export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const [number, setNumber] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Invited members are linked by email — try that before asking for a number.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!supabase) {
+        if (active) setChecking(false);
+        return;
+      }
+      const { data } = await supabase.rpc('auto_link_member');
+      if (!active) return;
+      if (data === true) onDone();
+      else setChecking(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [onDone]);
+
+  if (checking) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator color="#7fffb0" size="large" />
+      </View>
+    );
+  }
 
   async function submit(skip: boolean) {
     if (!supabase) return;
