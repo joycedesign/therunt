@@ -5,7 +5,7 @@ overall build order.
 
 ## Availability / profile enhancements (Henry, requested during Phase 2)
 
-### 1. Guests
+### 1. Guests — ✅ DONE (migration 0011)
 - Registered members can invite **1 or more** guests per playing date.
 - A guest is either a **non-registered member** or a **non-registered
   non-member**.
@@ -53,6 +53,15 @@ overall build order.
 5. **Play morning / afternoon preference** — roster had "Play morning" / "Play
    arvo" notes per week. Likely a per-availability or per-week time preference
    the draw/booking can use.
+
+## Deferred — Google Sheets sync (do near the end)
+- **Decision: Option A — one-way mirror (app → sheet).** App stays source of
+  truth; a scheduled job writes a clean, read-only sheet mirroring each week's
+  roster so sheet-users can view during the transition. To change status, use
+  the app. Uses a NEW sheet, not the current freeform one.
+- Setup needed: a Google service account, share the sheet with it, an Edge
+  Function on a pg_cron schedule.
+- Build this once the rest of the app is mostly finished.
 
 ## Decisions (folded into CLAUDE.md)
 - **Draw timing:** **4:05pm, 8 days before** the Saturday (5 min after the 4pm
