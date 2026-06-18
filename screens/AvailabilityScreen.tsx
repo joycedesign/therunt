@@ -29,9 +29,13 @@ type GuestsMap = Record<string, Guest[]>;
 type GroupEntry = { label: string; kind: 'member' | 'blocker' | 'guest' };
 type DrawGroup = { id: string; name: string; entries: GroupEntry[] };
 type GroupsMap = Record<string, DrawGroup[]>;
+type InPlayer = { id: string; name: string };
+type InByWeek = Record<string, InPlayer[]>;
+type Match = { id: string; a: string; b: string; playerA: string; playerB: string };
+type MatchesMap = Record<string, Match[]>;
 
 type NamePart = { preferred_name: string | null; name: string };
-type RosterRow = { week_id: string; players: NamePart | NamePart[] | null };
+type RosterRow = { week_id: string; player_id: string; players: NamePart | NamePart[] | null };
 type GuestRow = {
   id: string;
   week_id: string;
@@ -51,8 +55,14 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
   const [guests, setGuests] = useState<GuestsMap>({});
   const [drawGroups, setDrawGroups] = useState<GroupsMap>({});
   const [drawBusy, setDrawBusy] = useState<string | null>(null);
+  const [inByWeek, setInByWeek] = useState<InByWeek>({});
+  const [matches, setMatches] = useState<MatchesMap>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Add-match modal state.
+  const [matchFor, setMatchFor] = useState<string | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
 
   // Add-guest modal state.
   const [addingFor, setAddingFor] = useState<string | null>(null);
@@ -91,10 +101,10 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     });
     setAvail(map);
 
-    // Roster: everyone who is In for each visible week.
+    // Roster: everyone who is In for each visible week (with ids for matches).
     const { data: rost, error: rErr } = await supabase
       .from('availability')
-      .select('week_id, players(preferred_name, name)')
+      .select('week_id, player_id, players(preferred_name, name)')
       .in('week_id', weekIds)
       .eq('is_available', true);
     if (rErr) {
@@ -102,14 +112,48 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       return;
     }
     const rmap: RosterMap = {};
+    const imap: InByWeek = {};
     ((rost ?? []) as unknown as RosterRow[]).forEach((r) => {
       const p = Array.isArray(r.players) ? r.players[0] : r.players;
       const nm = p?.preferred_name || p?.name;
       if (!nm) return;
       (rmap[r.week_id] ??= []).push(nm);
+      (imap[r.week_id] ??= []).push({ id: r.player_id, name: nm });
     });
     Object.values(rmap).forEach((list) => list.sort((a, b) => a.localeCompare(b)));
+    Object.values(imap).forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
     setRoster(rmap);
+    setInByWeek(imap);
+
+    // Name lookup (for matches display).
+    const { data: pl } = await supabase.from('players').select('id, preferred_name, name');
+    const nameById: Record<string, string> = {};
+    ((pl ?? []) as { id: string; preferred_name: string | null; name: string }[]).forEach((p) => {
+      nameById[p.id] = p.preferred_name || p.name;
+    });
+
+    // Matches per week.
+    const { data: mt, error: mErr } = await supabase
+      .from('matches')
+      .select('id, week_id, player_a, player_b')
+      .in('week_id', weekIds);
+    if (mErr) {
+      setError(mErr.message);
+      return;
+    }
+    const mmap: MatchesMap = {};
+    ((mt ?? []) as { id: string; week_id: string; player_a: string; player_b: string }[]).forEach(
+      (m) => {
+        (mmap[m.week_id] ??= []).push({
+          id: m.id,
+          a: nameById[m.player_a] ?? 'player',
+          b: nameById[m.player_b] ?? 'player',
+          playerA: m.player_a,
+          playerB: m.player_b,
+        });
+      }
+    );
+    setMatches(mmap);
 
     // Guests for each visible week (with host name + assigned group).
     const { data: gst, error: gErr } = await supabase
@@ -205,6 +249,11 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         { event: '*', schema: 'public', table: 'group_members' },
         () => void load()
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'matches' },
+        () => void load()
+      )
       .subscribe();
     return () => {
       void client.removeChannel(channel);
@@ -276,6 +325,31 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     else void load();
   }
 
+  async function addMatch(weekId: string, opponentId: string) {
+    if (!supabase || !player) return;
+    setMatchBusy(true);
+    setError(null);
+    const { error } = await supabase.from('matches').insert({
+      week_id: weekId,
+      player_a: player.id,
+      player_b: opponentId,
+    });
+    setMatchBusy(false);
+    if (error) {
+      setError(error.message.includes('matches_unique_pair') ? 'That match already exists.' : error.message);
+      return;
+    }
+    setMatchFor(null);
+    void load();
+  }
+
+  async function removeMatch(id: string) {
+    if (!supabase) return;
+    const { error } = await supabase.from('matches').delete().eq('id', id);
+    if (error) setError(error.message);
+    else void load();
+  }
+
   async function randomize(weekId: string) {
     setDrawBusy(weekId);
     setError(null);
@@ -310,6 +384,20 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     );
   }
 
+  // People you can start a match with (In this week, not you, not already matched).
+  const opponents =
+    matchFor && player
+      ? (inByWeek[matchFor] ?? []).filter(
+          (p) =>
+            p.id !== player.id &&
+            !(matches[matchFor] ?? []).some(
+              (m) =>
+                (m.playerA === player.id && m.playerB === p.id) ||
+                (m.playerB === player.id && m.playerA === p.id)
+            )
+        )
+      : [];
+
   return (
     <>
       <ScrollView
@@ -333,6 +421,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
             const guestArr = guests[w.id] ?? [];
             const total = inList.length + guestArr.length;
             const drawn = drawGroups[w.id] ?? [];
+            const matchArr = matches[w.id] ?? [];
             const busy = drawBusy === w.id;
             const isOpen = expanded.has(w.id);
             return (
@@ -384,6 +473,15 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                             ))}
                           </View>
                         ))}
+                        {matchArr.length > 0 && (
+                          <View style={styles.matchList}>
+                            {matchArr.map((m) => (
+                              <Text key={m.id} style={styles.matchText}>
+                                ⚔️ {m.a} v {m.b}
+                              </Text>
+                            ))}
+                          </View>
+                        )}
                         {busy ? (
                           <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />
                         ) : (
@@ -424,17 +522,44 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                           </>
                         )}
 
+                        {matchArr.length > 0 && (
+                          <View style={styles.matchList}>
+                            {matchArr.map((m) => (
+                              <View key={m.id} style={styles.guestRow}>
+                                <Text style={styles.matchText}>
+                                  ⚔️ {m.a} v {m.b}
+                                </Text>
+                                {(m.playerA === player?.id || m.playerB === player?.id) && (
+                                  <TouchableOpacity onPress={() => removeMatch(m.id)} hitSlop={8}>
+                                    <Text style={styles.remove}>✕</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
                         <View style={styles.drawActions}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setAddingFor(w.id);
-                              setGuestName('');
-                              setGuestGa('');
-                              setError(null);
-                            }}
-                          >
-                            <Text style={styles.addGuestText}>+ Add guest</Text>
-                          </TouchableOpacity>
+                          <View style={styles.actionLinks}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setAddingFor(w.id);
+                                setGuestName('');
+                                setGuestGa('');
+                                setError(null);
+                              }}
+                            >
+                              <Text style={styles.addGuestText}>+ Guest</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setMatchFor(w.id);
+                                setError(null);
+                              }}
+                            >
+                              <Text style={styles.addGuestText}>+ Match</Text>
+                            </TouchableOpacity>
+                          </View>
                           {busy ? (
                             <ActivityIndicator color="#7fffb0" />
                           ) : (
@@ -504,6 +629,43 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={matchFor !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMatchFor(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add a match</Text>
+            <Text style={styles.matchHelp}>
+              Pick who you're playing — you'll be drawn into the same group.
+            </Text>
+            <ScrollView style={styles.opponentList}>
+              {opponents.length === 0 ? (
+                <Text style={styles.rosterEmpty}>No one else is In yet.</Text>
+              ) : (
+                opponents.map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={styles.opponentRow}
+                    onPress={() => matchFor && addMatch(matchFor, p.id)}
+                    disabled={matchBusy}
+                  >
+                    <Text style={styles.opponentName}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            {matchBusy && <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />}
+            {error && matchFor && <Text style={styles.error}>⚠️ {error}</Text>}
+            <TouchableOpacity onPress={() => setMatchFor(null)} disabled={matchBusy}>
+              <Text style={styles.closeLink}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -608,6 +770,18 @@ const styles = StyleSheet.create({
   },
   groupName: { color: '#7fffb0', fontSize: 15, fontWeight: '700', marginBottom: 6 },
   blockerTag: { color: '#9fb0a8', fontSize: 12, fontStyle: 'italic' },
+  actionLinks: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  matchList: { marginTop: 10 },
+  matchText: { color: '#ffd9a8', fontSize: 14, paddingVertical: 2 },
+  matchHelp: { color: '#9fc6b3', fontSize: 13, marginBottom: 12, lineHeight: 18 },
+  opponentList: { maxHeight: 280, marginBottom: 8 },
+  opponentRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  opponentName: { color: '#ffffff', fontSize: 16 },
+  closeLink: { color: '#bfe3d0', fontSize: 15, textAlign: 'center', marginTop: 12 },
   empty: { color: '#bfe3d0', fontSize: 15, marginTop: 8 },
   error: { color: '#ffd2d2', fontSize: 14, marginBottom: 12 },
   hint: { color: '#6f9684', fontSize: 12, textAlign: 'center', marginTop: 8 },

@@ -27,12 +27,35 @@ function shuffle<T>(arr: T[]): T[] {
 export function computeGroups(
   inIds: string[],
   guestsByHost: Record<string, string[]>,
-  blockerPool: string[]
+  blockerPool: string[],
+  matches: [string, string][] = []
 ): DraftGroup[] {
-  // A host travels with their guests as a single unit (must stay together).
-  let units: Unit[] = inIds.map((id) => {
-    const g = guestsByHost[id] ?? [];
-    return { memberIds: [id], guestIds: g, size: 1 + g.length };
+  // Cluster players that must stay together (matches) with union-find.
+  const inSet = new Set(inIds);
+  const parent: Record<string, string> = {};
+  inIds.forEach((id) => (parent[id] = id));
+  const find = (x: string): string => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  for (const [a, b] of matches) {
+    if (inSet.has(a) && inSet.has(b)) union(a, b);
+  }
+  const clusters: Record<string, string[]> = {};
+  inIds.forEach((id) => (clusters[find(id)] ??= []).push(id));
+
+  // Each cluster (matched players + all their guests) is one unit that stays together.
+  let units: Unit[] = Object.values(clusters).map((members) => {
+    const guestIds = members.flatMap((m) => guestsByHost[m] ?? []);
+    return { memberIds: members, guestIds, size: members.length + guestIds.length };
   });
   // Shuffle for randomness, then place larger units first (first-fit decreasing).
   units = shuffle(units).sort((a, b) => b.size - a.size);
@@ -115,7 +138,16 @@ export async function runDraw(weekId: string): Promise<void> {
     .map((r: { id: string }) => r.id)
     .filter((id: string) => !inSet.has(id));
 
-  const plan = computeGroups(inIds, guestsByHost, blockerPool);
+  const { data: mt, error: e5 } = await supabase
+    .from('matches')
+    .select('player_a, player_b')
+    .eq('week_id', weekId);
+  if (e5) throw e5;
+  const matches = (mt ?? []).map(
+    (m: { player_a: string; player_b: string }) => [m.player_a, m.player_b] as [string, string]
+  );
+
+  const plan = computeGroups(inIds, guestsByHost, blockerPool, matches);
 
   const { error: e4 } = await supabase.rpc('apply_draw', {
     p_week_id: weekId,

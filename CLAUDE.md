@@ -136,6 +136,14 @@ Row-level security (RLS) will be enabled on every table.
 | ga_number | text, nullable | Golf Australia number |
 | source | enum(`manual`,`club_list`) | typed in vs. picked from the Manly member list |
 
+### matches  *(two players who must be drawn into the same group)*
+| column | type | notes |
+|---|---|---|
+| id | uuid PK | |
+| week_id | uuid → weeks(id) | |
+| player_a | uuid → players(id) | one player |
+| player_b | uuid → players(id) | the other; unique unordered pair per week |
+
 ### results
 | column | type | notes |
 |---|---|---|
