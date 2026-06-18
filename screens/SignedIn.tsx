@@ -6,9 +6,10 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { Player } from '../lib/useAuth';
 import AvailabilityScreen from './AvailabilityScreen';
+import MembersScreen from './MembersScreen';
 import ProfileScreen from './ProfileScreen';
 
-type Tab = 'availability' | 'profile';
+type Tab = 'availability' | 'members' | 'profile';
 
 type Props = {
   player: Player | null;
@@ -33,6 +34,11 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
             onPress={() => setTab('availability')}
           />
           <TabButton
+            label="Members"
+            active={tab === 'members'}
+            onPress={() => setTab('members')}
+          />
+          <TabButton
             label="Profile"
             active={tab === 'profile'}
             onPress={() => setTab('profile')}
@@ -40,9 +46,9 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
         </View>
 
         <View style={styles.body}>
-          {tab === 'availability' ? (
-            <AvailabilityScreen player={player} />
-          ) : (
+          {tab === 'availability' && <AvailabilityScreen player={player} />}
+          {tab === 'members' && <MembersScreen />}
+          {tab === 'profile' && (
             <ProfileScreen player={player} email={email} onProfileSaved={refreshPlayer} />
           )}
         </View>
@@ -90,7 +96,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 32, fontWeight: '800', color: '#ffffff' },
   subtitle: { fontSize: 15, color: '#bfe3d0', marginTop: 2, marginBottom: 20 },
-  tabs: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   tab: {
     paddingVertical: 8,
     paddingHorizontal: 16,
