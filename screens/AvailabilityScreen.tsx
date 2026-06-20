@@ -422,6 +422,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
             const total = inList.length + guestArr.length;
             const drawn = drawGroups[w.id] ?? [];
             const matchArr = matches[w.id] ?? [];
+            const isIn = avail[w.id] ?? false;
             const busy = drawBusy === w.id;
             const isOpen = expanded.has(w.id);
             return (
@@ -541,24 +542,28 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
 
                         <View style={styles.drawActions}>
                           <View style={styles.actionLinks}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setAddingFor(w.id);
-                                setGuestName('');
-                                setGuestGa('');
-                                setError(null);
-                              }}
-                            >
-                              <Text style={styles.addGuestText}>+ Guest</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setMatchFor(w.id);
-                                setError(null);
-                              }}
-                            >
-                              <Text style={styles.addGuestText}>+ Match</Text>
-                            </TouchableOpacity>
+                            {isIn && (
+                              <>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setAddingFor(w.id);
+                                    setGuestName('');
+                                    setGuestGa('');
+                                    setError(null);
+                                  }}
+                                >
+                                  <Text style={styles.addGuestText}>+ Guest</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setMatchFor(w.id);
+                                    setError(null);
+                                  }}
+                                >
+                                  <Text style={styles.addGuestText}>+ Match</Text>
+                                </TouchableOpacity>
+                              </>
+                            )}
                           </View>
                           {busy ? (
                             <ActivityIndicator color="#7fffb0" />
