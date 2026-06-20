@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { runDraw, resetDraw } from '../lib/draw';
 import type { Player } from '../lib/useAuth';
@@ -478,7 +479,8 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                           <View style={styles.matchList}>
                             {matchArr.map((m) => (
                               <Text key={m.id} style={styles.matchText}>
-                                ⚔️ {m.a} v {m.b}
+                                <MaterialCommunityIcons name="merge" size={14} color="#ffffff" />{' '}
+                                {m.a} v {m.b}
                               </Text>
                             ))}
                           </View>
@@ -528,7 +530,8 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                             {matchArr.map((m) => (
                               <View key={m.id} style={styles.guestRow}>
                                 <Text style={styles.matchText}>
-                                  ⚔️ {m.a} v {m.b}
+                                  <MaterialCommunityIcons name="merge" size={14} color="#ffffff" />{' '}
+                                  {m.a} v {m.b}
                                 </Text>
                                 {(m.playerA === player?.id || m.playerB === player?.id) && (
                                   <TouchableOpacity onPress={() => removeMatch(m.id)} hitSlop={8}>
