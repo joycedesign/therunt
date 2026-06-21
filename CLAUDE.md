@@ -45,6 +45,7 @@ times manually, then scrape results to crown each week's "Runt".
 4. **Results + Runt** — scrape MiScore, set winner/loser, assign next Runt,
    leaderboard/stats.
 5. **Manual booking** — Runt records tee times and marks groups booked → **ship v1**.
+   ✅ *done*: per-group tee time + book/unbook; week rolls up to "booked".
 6. **Notifications & polish**.
 7. **Ship** — TestFlight, Play Store internal testing, web deploy.
 8. *(Later, not now)* automated miClub/miGolf booking bot.

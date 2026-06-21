@@ -20,15 +20,28 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { runDraw, resetDraw } from '../lib/draw';
+import { bookGroup, unbookGroup } from '../lib/booking';
+import TeeTimeModal from '../components/TeeTimeModal';
 import type { Player } from '../lib/useAuth';
 
-type Week = { id: string; start_date: string; booking_deadline: string | null };
+type Week = {
+  id: string;
+  start_date: string;
+  booking_deadline: string | null;
+  status: string;
+};
 type AvailMap = Record<string, boolean>;
 type RosterMap = Record<string, string[]>;
 type Guest = { id: string; name: string; hostName: string; host_player_id: string };
 type GuestsMap = Record<string, Guest[]>;
 type GroupEntry = { label: string; kind: 'member' | 'blocker' | 'guest' };
-type DrawGroup = { id: string; name: string; entries: GroupEntry[] };
+type DrawGroup = {
+  id: string;
+  name: string;
+  entries: GroupEntry[];
+  bookingStatus: string;
+  teeTime: string | null;
+};
 type GroupsMap = Record<string, DrawGroup[]>;
 type InPlayer = { id: string; name: string };
 type InByWeek = Record<string, InPlayer[]>;
@@ -65,6 +78,14 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const [matchBusy, setMatchBusy] = useState(false);
 
+  // Tee-time picker state.
+  const [pickerGroup, setPickerGroup] = useState<{
+    groupId: string;
+    weekId: string;
+    startDate: string;
+    teeTime: string | null;
+  } | null>(null);
+
   // Add-guest modal state.
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
@@ -77,7 +98,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     const today = new Date().toISOString().slice(0, 10);
     const { data: wk, error: wErr } = await supabase
       .from('weeks')
-      .select('id, start_date, booking_deadline')
+      .select('id, start_date, booking_deadline, status')
       .gte('start_date', today)
       .order('start_date')
       .limit(8);
@@ -185,7 +206,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     // Draw result (groups) for each visible week.
     const { data: grp, error: grErr } = await supabase
       .from('groups')
-      .select('id, week_id, group_name')
+      .select('id, week_id, group_name, booking_status, tee_time')
       .in('week_id', weekIds)
       .order('group_name');
     if (grErr) {
@@ -212,10 +233,24 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       });
     }
     const grmap: GroupsMap = {};
-    (grp ?? []).forEach((g: { id: string; week_id: string; group_name: string }) => {
-      const entries = [...(byGroup[g.id] ?? []), ...(guestByGroup[g.id] ?? [])];
-      (grmap[g.week_id] ??= []).push({ id: g.id, name: g.group_name, entries });
-    });
+    (grp ?? []).forEach(
+      (g: {
+        id: string;
+        week_id: string;
+        group_name: string;
+        booking_status: string;
+        tee_time: string | null;
+      }) => {
+        const entries = [...(byGroup[g.id] ?? []), ...(guestByGroup[g.id] ?? [])];
+        (grmap[g.week_id] ??= []).push({
+          id: g.id,
+          name: g.group_name,
+          entries,
+          bookingStatus: g.booking_status,
+          teeTime: g.tee_time,
+        });
+      }
+    );
     setDrawGroups(grmap);
   }, [player]);
 
@@ -351,6 +386,29 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     else void load();
   }
 
+  async function confirmTee(d: Date) {
+    if (!pickerGroup) return;
+    setError(null);
+    try {
+      await bookGroup(pickerGroup.groupId, pickerGroup.weekId, d.toISOString());
+      setPickerGroup(null);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+      setPickerGroup(null);
+    }
+  }
+
+  async function unbook(groupId: string, weekId: string) {
+    setError(null);
+    try {
+      await unbookGroup(groupId, weekId);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
   async function randomize(weekId: string) {
     setDrawBusy(weekId);
     setError(null);
@@ -437,6 +495,9 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                     <Text style={styles.date}>{formatSaturday(w.start_date)}</Text>
                     <Text style={styles.count}>
                       {total} in {isOpen ? '▲' : '▼'}
+                      {w.status === 'booked' && (
+                        <Text style={styles.bookedBadge}>  ✅ booked</Text>
+                      )}
                     </Text>
                   </TouchableOpacity>
                   <Switch
@@ -459,22 +520,67 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
 
                     {drawn.length > 0 ? (
                       <>
-                        {drawn.map((grp) => (
-                          <View key={grp.id} style={styles.groupBox}>
-                            <Text style={styles.groupName}>{grp.name}</Text>
-                            {grp.entries.map((e, i) => (
-                              <Text key={i} style={styles.rosterName}>
-                                {i + 1}. {e.label}
-                                {e.kind === 'guest' && (
-                                  <Text style={styles.guestTag}> (guest)</Text>
-                                )}
-                                {e.kind === 'blocker' && (
-                                  <Text style={styles.blockerTag}> (blocker)</Text>
-                                )}
-                              </Text>
-                            ))}
-                          </View>
-                        ))}
+                        {drawn.map((grp) => {
+                          const booked = grp.bookingStatus === 'confirmed' && grp.teeTime;
+                          return (
+                            <View key={grp.id} style={styles.groupBox}>
+                              <Text style={styles.groupName}>{grp.name}</Text>
+                              {grp.entries.map((e, i) => (
+                                <Text key={i} style={styles.rosterName}>
+                                  {i + 1}. {e.label}
+                                  {e.kind === 'guest' && (
+                                    <Text style={styles.guestTag}> (guest)</Text>
+                                  )}
+                                  {e.kind === 'blocker' && (
+                                    <Text style={styles.blockerTag}> (blocker)</Text>
+                                  )}
+                                </Text>
+                              ))}
+                              {booked ? (
+                                <View style={styles.bookRow}>
+                                  <Text style={styles.bookedText}>
+                                    ✅ Booked · {formatTeeTime(grp.teeTime as string)}
+                                  </Text>
+                                  <View style={styles.actionLinks}>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        setPickerGroup({
+                                          groupId: grp.id,
+                                          weekId: w.id,
+                                          startDate: w.start_date,
+                                          teeTime: grp.teeTime,
+                                        })
+                                      }
+                                    >
+                                      <Text style={styles.addGuestText}>Edit</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => unbook(grp.id, w.id)}>
+                                      <Text style={styles.resetLink}>Unbook</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              ) : (
+                                <TouchableOpacity
+                                  style={styles.bookBtn}
+                                  onPress={() =>
+                                    setPickerGroup({
+                                      groupId: grp.id,
+                                      weekId: w.id,
+                                      startDate: w.start_date,
+                                      teeTime: grp.teeTime,
+                                    })
+                                  }
+                                >
+                                  <Text style={styles.bookBtnText}>Set tee time &amp; book</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        })}
+                        <Text style={styles.bookSummary}>
+                          Booked {drawn.filter((g) => g.bookingStatus === 'confirmed').length}/
+                          {drawn.length} groups
+                        </Text>
                         {matchArr.length > 0 && (
                           <View style={styles.matchList}>
                             {matchArr.map((m) => (
@@ -677,8 +783,28 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
           </View>
         </View>
       </Modal>
+
+      <TeeTimeModal
+        visible={pickerGroup !== null}
+        initial={
+          pickerGroup
+            ? initialTee(pickerGroup.startDate, pickerGroup.teeTime)
+            : new Date()
+        }
+        onConfirm={confirmTee}
+        onClose={() => setPickerGroup(null)}
+      />
     </>
   );
+}
+
+function initialTee(startDate: string, teeTime: string | null): Date {
+  if (teeTime) return new Date(teeTime);
+  return new Date(`${startDate}T07:00:00`);
+}
+
+function formatTeeTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
 }
 
 function errMsg(e: unknown): string {
@@ -778,6 +904,24 @@ const styles = StyleSheet.create({
   },
   groupName: { color: '#7fffb0', fontSize: 15, fontWeight: '700', marginBottom: 6 },
   blockerTag: { color: '#9fb0a8', fontSize: 12, fontStyle: 'italic' },
+  bookRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  bookedText: { color: '#7fffb0', fontSize: 13, fontWeight: '600' },
+  bookBtn: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#7fffb0',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  bookBtnText: { color: '#7fffb0', fontSize: 14, fontWeight: '600' },
+  bookSummary: { color: '#9fc6b3', fontSize: 12, marginTop: 4 },
+  bookedBadge: { color: '#7fffb0', fontSize: 12, fontWeight: '700' },
   actionLinks: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   matchList: { marginTop: 10 },
   matchText: { color: '#ffd9a8', fontSize: 14, paddingVertical: 2 },

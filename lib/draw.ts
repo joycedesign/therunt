@@ -154,10 +154,13 @@ export async function runDraw(weekId: string): Promise<void> {
     p_groups: plan,
   });
   if (e4) throw e4;
+
+  await supabase.from('weeks').update({ status: 'draw_complete' }).eq('id', weekId);
 }
 
 export async function resetDraw(weekId: string): Promise<void> {
   if (!supabase) throw new Error('No connection.');
   const { error } = await supabase.from('groups').delete().eq('week_id', weekId);
   if (error) throw error;
+  await supabase.from('weeks').update({ status: 'pending' }).eq('id', weekId);
 }
