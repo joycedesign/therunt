@@ -12,10 +12,14 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => Promise<boole
 
   useEffect(() => {
     void biometricLabel().then(setLabel);
-    // Auto-prompt once when the lock screen appears.
+    // Auto-prompt once, shortly after mount (iOS can reject a prompt fired
+    // before the app is fully foregrounded).
     if (!prompted.current) {
       prompted.current = true;
-      void tryUnlock();
+      const t = setTimeout(() => {
+        void tryUnlock();
+      }, 400);
+      return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -32,9 +36,13 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => Promise<boole
       <TouchableOpacity style={styles.button} onPress={tryUnlock}>
         <Text style={styles.buttonText}>Unlock with {label}</Text>
       </TouchableOpacity>
-      {failed && <Text style={styles.hint}>Unlock cancelled — tap to try again.</Text>}
+      {failed && (
+        <Text style={styles.hint}>
+          Not unlocked — tap "Unlock with {label}" to try again.
+        </Text>
+      )}
       <TouchableOpacity onPress={() => supabase?.auth.signOut()}>
-        <Text style={styles.link}>Sign out instead</Text>
+        <Text style={styles.link}>Sign out (you'll need to log in again)</Text>
       </TouchableOpacity>
     </View>
   );
