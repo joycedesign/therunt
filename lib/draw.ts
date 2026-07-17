@@ -160,7 +160,6 @@ export async function runDraw(weekId: string): Promise<void> {
 
 export async function resetDraw(weekId: string): Promise<void> {
   if (!supabase) throw new Error('No connection.');
-  const { error } = await supabase.from('groups').delete().eq('week_id', weekId);
+  const { error } = await supabase.rpc('reset_draw', { p_week_id: weekId });
   if (error) throw error;
-  await supabase.from('weeks').update({ status: 'pending' }).eq('id', weekId);
 }

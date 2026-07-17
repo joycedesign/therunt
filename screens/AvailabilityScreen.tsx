@@ -457,6 +457,8 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         )
       : [];
 
+  const isAdmin = player?.is_admin ?? false;
+
   return (
     <>
       <ScrollView
@@ -591,18 +593,19 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                             ))}
                           </View>
                         )}
-                        {busy ? (
-                          <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />
-                        ) : (
-                          <View style={styles.drawActions}>
-                            <TouchableOpacity onPress={() => randomize(w.id)}>
-                              <Text style={styles.addGuestText}>↻ Re-randomize</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => reset(w.id)}>
-                              <Text style={styles.resetLink}>Reset</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
+                        {isAdmin &&
+                          (busy ? (
+                            <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />
+                          ) : (
+                            <View style={styles.drawActions}>
+                              <TouchableOpacity onPress={() => randomize(w.id)}>
+                                <Text style={styles.addGuestText}>↻ Re-randomize</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => reset(w.id)}>
+                                <Text style={styles.resetLink}>Reset</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))}
                       </>
                     ) : (
                       <>
@@ -674,18 +677,19 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                               </>
                             )}
                           </View>
-                          {busy ? (
-                            <ActivityIndicator color="#7fffb0" />
-                          ) : (
-                            total > 0 && (
-                              <TouchableOpacity
-                                style={styles.randomizeBtn}
-                                onPress={() => randomize(w.id)}
-                              >
-                                <Text style={styles.randomizeBtnText}>Randomize</Text>
-                              </TouchableOpacity>
-                            )
-                          )}
+                          {isAdmin &&
+                            (busy ? (
+                              <ActivityIndicator color="#7fffb0" />
+                            ) : (
+                              total > 0 && (
+                                <TouchableOpacity
+                                  style={styles.randomizeBtn}
+                                  onPress={() => randomize(w.id)}
+                                >
+                                  <Text style={styles.randomizeBtnText}>Randomize</Text>
+                                </TouchableOpacity>
+                              )
+                            ))}
                         </View>
                       </>
                     )}
