@@ -16,9 +16,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Switch } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '../lib/supabase';
 import { INVITE_URL } from '../lib/config';
+import type { Player } from '../lib/useAuth';
 
 type Member = {
   id: string;
@@ -26,9 +28,11 @@ type Member = {
   preferred_name: string | null;
   membership_number: string | null;
   auth_user_id: string | null;
+  is_admin: boolean;
 };
 
-export default function MembersScreen() {
+export default function MembersScreen({ player }: { player: Player | null }) {
+  const isAdmin = player?.is_admin ?? false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -40,6 +44,7 @@ export default function MembersScreen() {
   const [fName, setFName] = useState('');
   const [fShort, setFShort] = useState('');
   const [fNumber, setFNumber] = useState('');
+  const [fAdmin, setFAdmin] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Invite modal
@@ -54,7 +59,7 @@ export default function MembersScreen() {
     setError(null);
     const { data, error } = await supabase
       .from('players')
-      .select('id, name, preferred_name, membership_number, auth_user_id')
+      .select('id, name, preferred_name, membership_number, auth_user_id, is_admin')
       .order('preferred_name', { nullsFirst: false })
       .order('name');
     if (error) {
@@ -94,6 +99,7 @@ export default function MembersScreen() {
     setFName('');
     setFShort('');
     setFNumber('');
+    setFAdmin(false);
     setError(null);
     setModalOpen(true);
   }
@@ -103,6 +109,7 @@ export default function MembersScreen() {
     setFName(m.name);
     setFShort(m.preferred_name ?? '');
     setFNumber(m.membership_number ?? '');
+    setFAdmin(m.is_admin);
     setError(null);
     setModalOpen(true);
   }
@@ -125,11 +132,12 @@ export default function MembersScreen() {
     }
     setBusy(true);
     setError(null);
-    const fields = {
+    const fields: Record<string, unknown> = {
       name: name || short,
       preferred_name: short || name,
       membership_number: number || null,
     };
+    if (isAdmin) fields.is_admin = fAdmin; // only admins send this (DB also enforces)
     const resp = editingId
       ? await supabase.from('players').update(fields).eq('id', editingId)
       : await supabase.from('players').insert({ ...fields, status: 'active' });
@@ -218,22 +226,26 @@ export default function MembersScreen() {
 
         {members.map((m) => {
           const claimed = m.auth_user_id != null;
+          const editable = isAdmin || !claimed;
           return (
             <TouchableOpacity
               key={m.id}
               style={styles.row}
-              activeOpacity={claimed ? 1 : 0.7}
-              onPress={() => (claimed ? undefined : openEdit(m))}
-              disabled={claimed}
+              activeOpacity={editable ? 0.7 : 1}
+              onPress={() => (editable ? openEdit(m) : undefined)}
+              disabled={!editable}
             >
               <View style={styles.rowText}>
-                <Text style={styles.name}>{m.preferred_name || m.name}</Text>
+                <Text style={styles.name}>
+                  {m.preferred_name || m.name}
+                  {m.is_admin && <Text style={styles.adminBadge}>  admin</Text>}
+                </Text>
                 <Text style={styles.sub}>
                   {m.membership_number ? `#${m.membership_number}` : 'no number'}
                   {claimed ? '  ·  signed up' : ''}
                 </Text>
               </View>
-              {!claimed && <Text style={styles.chevron}>›</Text>}
+              {editable && <Text style={styles.chevron}>›</Text>}
             </TouchableOpacity>
           );
         })}
@@ -279,6 +291,20 @@ export default function MembersScreen() {
               onChangeText={setFNumber}
               editable={!busy}
             />
+            {isAdmin && (
+              <View style={styles.adminRow}>
+                <Text style={styles.adminLabel}>Admin (can run the draw)</Text>
+                <Switch
+                  value={fAdmin}
+                  onValueChange={setFAdmin}
+                  trackColor={{ false: '#8a9a92', true: '#22c55e' }}
+                  thumbColor="#ffffff"
+                  ios_backgroundColor="#8a9a92"
+                  {...({ activeThumbColor: '#ffffff' } as object)}
+                  disabled={busy}
+                />
+              </View>
+            )}
             {error && modalOpen && <Text style={styles.error}>⚠️ {error}</Text>}
             <View style={styles.modalButtons}>
               {editingId && !editingClaimed && (
@@ -405,6 +431,14 @@ const styles = StyleSheet.create({
   name: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   sub: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
   chevron: { color: '#7fffb0', fontSize: 22, fontWeight: '700' },
+  adminBadge: { color: '#7fffb0', fontSize: 12, fontWeight: '700' },
+  adminRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  adminLabel: { color: '#ffffff', fontSize: 14, flex: 1, paddingRight: 12 },
   hint: { color: '#6f9684', fontSize: 12, textAlign: 'center', marginTop: 12 },
   error: { color: '#ffd2d2', fontSize: 14, marginBottom: 12 },
   modalBackdrop: {

@@ -47,7 +47,7 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
 
         <View style={styles.body}>
           {tab === 'availability' && <AvailabilityScreen player={player} />}
-          {tab === 'members' && <MembersScreen />}
+          {tab === 'members' && <MembersScreen player={player} />}
           {tab === 'profile' && (
             <ProfileScreen player={player} email={email} onProfileSaved={refreshPlayer} />
           )}
