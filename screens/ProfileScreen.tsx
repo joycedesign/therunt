@@ -14,6 +14,13 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import {
+  authenticate,
+  biometricAvailable,
+  biometricEnabled,
+  biometricLabel,
+  setBiometricEnabled,
+} from '../lib/biometrics';
 import type { Player } from '../lib/useAuth';
 
 type Props = {
@@ -33,12 +40,49 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
   const [defaultAvail, setDefaultAvail] = useState(false);
   const [defBusy, setDefBusy] = useState(false);
 
+  const [faceAvailable, setFaceAvailable] = useState(false);
+  const [faceOn, setFaceOn] = useState(false);
+  const [faceLabel, setFaceLabel] = useState('Face ID');
+  const [faceBusy, setFaceBusy] = useState(false);
+
   useEffect(() => {
     setName(player?.name ?? '');
     setPreferredName(player?.preferred_name ?? '');
     setMembershipNumber(player?.membership_number ?? '');
     setDefaultAvail(player?.default_available ?? false);
   }, [player]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const avail = await biometricAvailable();
+      if (!active) return;
+      setFaceAvailable(avail);
+      if (avail) {
+        setFaceLabel(await biometricLabel());
+        setFaceOn(await biometricEnabled());
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function changeFace(value: boolean) {
+    setFaceBusy(true);
+    setError(null);
+    if (value) {
+      // Confirm biometrics work before enabling.
+      const ok = await authenticate();
+      if (!ok) {
+        setFaceBusy(false);
+        return;
+      }
+    }
+    await setBiometricEnabled(value);
+    setFaceOn(value);
+    setFaceBusy(false);
+  }
 
   async function changeDefault(value: boolean) {
     if (!supabase) return;
@@ -154,6 +198,33 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
           />
         )}
       </View>
+
+      {faceAvailable && (
+        <>
+          <View style={styles.divider} />
+          <Text style={styles.label}>{faceLabel} unlock</Text>
+          <Text style={styles.help}>
+            Require {faceLabel} to open the app on this device.
+          </Text>
+          <View style={styles.defaultRow}>
+            <Text style={styles.defaultState}>
+              {faceOn ? `${faceLabel} on` : `${faceLabel} off`}
+            </Text>
+            {faceBusy ? (
+              <ActivityIndicator color="#7fffb0" />
+            ) : (
+              <Switch
+                value={faceOn}
+                onValueChange={changeFace}
+                trackColor={{ false: '#8a9a92', true: '#22c55e' }}
+                thumbColor="#ffffff"
+                ios_backgroundColor="#8a9a92"
+                {...({ activeThumbColor: '#ffffff' } as object)}
+              />
+            )}
+          </View>
+        </>
+      )}
 
       {error && <Text style={styles.error}>⚠️ {error}</Text>}
     </View>

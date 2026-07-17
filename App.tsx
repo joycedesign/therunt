@@ -2,14 +2,17 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
+import { useBiometricLock } from './lib/useBiometricLock';
 import SignInScreen from './screens/SignInScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import SetPasswordScreen from './screens/SetPasswordScreen';
+import LockScreen from './screens/LockScreen';
 import SignedIn from './screens/SignedIn';
 
 export default function App() {
   const { loading, checkingProfile, recovery, endRecovery, session, player, refreshPlayer } =
     useAuth();
+  const lock = useBiometricLock(!!session);
 
   if (!isSupabaseConfigured) {
     return (
@@ -21,7 +24,7 @@ export default function App() {
     );
   }
 
-  if (loading || (session && checkingProfile)) {
+  if (loading || (session && (checkingProfile || !lock.ready))) {
     return (
       <Centered>
         <ActivityIndicator color="#7fffb0" size="large" />
@@ -32,6 +35,7 @@ export default function App() {
   function content() {
     if (recovery) return <SetPasswordScreen onDone={endRecovery} />;
     if (!session) return <SignInScreen />;
+    if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
     if (!player) return <OnboardingScreen onDone={refreshPlayer} />;
     return (
       <SignedIn
