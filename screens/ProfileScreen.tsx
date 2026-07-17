@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -147,7 +148,14 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
   }
 
   return (
-    <View style={styles.card}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.card}>
       <Text style={styles.label}>Your profile</Text>
       <Text style={styles.email}>{email}</Text>
 
@@ -275,11 +283,14 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
       )}
 
       {error && <Text style={styles.error}>⚠️ {error}</Text>}
-    </View>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
   card: {
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 14,
