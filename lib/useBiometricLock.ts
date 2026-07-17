@@ -10,6 +10,9 @@ export function useBiometricLock(hasSession: boolean) {
 
   useEffect(() => {
     let active = true;
+    // Hold (spinner) until we've decided whether to lock, so the app can't
+    // render before the lock check finishes.
+    if (hasSession) setReady(false);
     (async () => {
       if (!hasSession) {
         if (active) {

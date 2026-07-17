@@ -45,6 +45,10 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
   const [faceLabel, setFaceLabel] = useState('Face ID');
   const [faceBusy, setFaceBusy] = useState(false);
 
+  const [newPassword, setNewPassword] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwSaved, setPwSaved] = useState(false);
+
   useEffect(() => {
     setName(player?.name ?? '');
     setPreferredName(player?.preferred_name ?? '');
@@ -82,6 +86,25 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
     await setBiometricEnabled(value);
     setFaceOn(value);
     setFaceBusy(false);
+  }
+
+  async function savePassword() {
+    if (!supabase) return;
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setPwBusy(true);
+    setError(null);
+    setPwSaved(false);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPwBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setPwSaved(true);
+    setNewPassword('');
   }
 
   async function changeDefault(value: boolean) {
@@ -199,6 +222,31 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
         )}
       </View>
 
+      <View style={styles.divider} />
+      <Text style={styles.label}>Password</Text>
+      <Text style={styles.help}>Set or change your password for email + password sign-in.</Text>
+      <TextInput
+        style={[styles.input, styles.pwInput]}
+        placeholder="New password (min 6 characters)"
+        placeholderTextColor="#7fa392"
+        secureTextEntry
+        value={newPassword}
+        onChangeText={setNewPassword}
+        editable={!pwBusy}
+      />
+      <TouchableOpacity
+        style={[styles.button, (pwBusy || !newPassword) && styles.buttonDisabled]}
+        onPress={savePassword}
+        disabled={pwBusy || !newPassword}
+      >
+        {pwBusy ? (
+          <ActivityIndicator color="#0b3d2e" />
+        ) : (
+          <Text style={styles.buttonText}>Save password</Text>
+        )}
+      </TouchableOpacity>
+      {pwSaved && <Text style={styles.saved}>✅ Password saved.</Text>}
+
       {faceAvailable && (
         <>
           <View style={styles.divider} />
@@ -272,4 +320,5 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   defaultState: { color: '#ffffff', fontSize: 15, flex: 1, paddingRight: 12 },
+  pwInput: { marginTop: 8 },
 });

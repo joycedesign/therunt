@@ -7,7 +7,9 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -100,7 +102,15 @@ export default function SignInScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
       <Text style={styles.title}>The Runt 🐐</Text>
       <Text style={styles.subtitle}>Saturday golf, sorted.</Text>
 
@@ -247,7 +257,8 @@ export default function SignInScreen() {
         {notice && <Text style={styles.notice}>✅ {notice}</Text>}
         {error && <Text style={styles.error}>⚠️ {error}</Text>}
       </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -268,8 +279,9 @@ function Tab({
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: '#0b3d2e' },
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: '#0b3d2e',
     alignItems: 'center',
     justifyContent: 'center',
