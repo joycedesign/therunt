@@ -17,6 +17,10 @@ const URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 const DOMAIN = 'therunt.app';
 
+// Shared temporary password for everyone's first login; each member changes it
+// in Profile afterwards. Passed via env (not committed): RUNT_TEMP_PASSWORD=...
+const TEMP_PASSWORD = process.env.RUNT_TEMP_PASSWORD;
+
 // [membership number, last name]
 const members = [
   ['4053', 'Joyce'],
@@ -41,10 +45,12 @@ const members = [
   ['4048', 'Walker'],
 ];
 
-const pw = (last) => last.toLowerCase().replace(/\s+/g, '');
-
 if (!URL || !KEY) {
   console.error('Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY');
+  process.exit(1);
+}
+if (!TEMP_PASSWORD) {
+  console.error('Set RUNT_TEMP_PASSWORD (e.g. RUNT_TEMP_PASSWORD=xxxx node scripts/provision-members.mjs)');
   process.exit(1);
 }
 
@@ -52,7 +58,7 @@ let ok = 0;
 for (const [num, last] of members) {
   const supa = createClient(URL, KEY, { auth: { persistSession: false } });
   const email = `${num}@${DOMAIN}`;
-  const password = pw(last);
+  const password = TEMP_PASSWORD;
 
   // Create the account (or fall back to signing in if it already exists).
   let session = null;

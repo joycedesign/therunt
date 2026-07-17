@@ -97,8 +97,8 @@ export default function SignInScreen() {
           </TouchableOpacity>
 
           <Text style={styles.help}>
-            First time? Your password is your last name in lowercase. Change it in
-            Profile after signing in.
+            First time? Use the temporary password from the organiser, then change
+            it in Profile.
           </Text>
           <Text style={styles.help}>Forgotten it? Ask the organiser to reset it.</Text>
 
