@@ -4,10 +4,12 @@ import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
 import SignInScreen from './screens/SignInScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import SetPasswordScreen from './screens/SetPasswordScreen';
 import SignedIn from './screens/SignedIn';
 
 export default function App() {
-  const { loading, checkingProfile, session, player, refreshPlayer } = useAuth();
+  const { loading, checkingProfile, recovery, endRecovery, session, player, refreshPlayer } =
+    useAuth();
 
   if (!isSupabaseConfigured) {
     return (
@@ -28,6 +30,7 @@ export default function App() {
   }
 
   function content() {
+    if (recovery) return <SetPasswordScreen onDone={endRecovery} />;
     if (!session) return <SignInScreen />;
     if (!player) return <OnboardingScreen onDone={refreshPlayer} />;
     return (

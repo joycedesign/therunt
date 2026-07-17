@@ -20,6 +20,8 @@ export type Player = {
 export type AuthState = {
   loading: boolean;
   checkingProfile: boolean;
+  recovery: boolean;
+  endRecovery: () => void;
   session: Session | null;
   player: Player | null;
   refreshPlayer: () => Promise<void>;
@@ -28,6 +30,7 @@ export type AuthState = {
 export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
   const [checkingProfile, setCheckingProfile] = useState(false);
+  const [recovery, setRecovery] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
 
@@ -41,8 +44,10 @@ export function useAuth(): AuthState {
       setSession(data.session);
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next);
+      // Clicking a password-reset link opens the app in recovery mode.
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -102,5 +107,13 @@ export function useAuth(): AuthState {
     [loadPlayer, session]
   );
 
-  return { loading, checkingProfile, session, player, refreshPlayer };
+  return {
+    loading,
+    checkingProfile,
+    recovery,
+    endRecovery: () => setRecovery(false),
+    session,
+    player,
+    refreshPlayer,
+  };
 }
