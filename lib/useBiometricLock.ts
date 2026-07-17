@@ -1,26 +1,30 @@
-// Locks the app behind a biometric prompt on launch when the user has
-// enabled Face ID / Touch ID unlock and there's a saved session.
+// Locks the app behind a biometric prompt when it *starts* with a saved
+// session (a returning user) and Face ID / Touch ID unlock is enabled.
+//
+// It decides once, right after the initial session check — so signing in
+// interactively during this run does NOT trigger a lock (you just
+// authenticated). Face ID effectively replaces the login page for returning
+// users, rather than stacking on top of a fresh sign-in.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { authenticate, biometricAvailable, biometricEnabled } from './biometrics';
 
-export function useBiometricLock(hasSession: boolean) {
+export function useBiometricLock(loading: boolean, hasSession: boolean) {
   const [ready, setReady] = useState(false);
   const [locked, setLocked] = useState(false);
+  const decided = useRef(false);
 
   useEffect(() => {
+    if (loading || decided.current) return;
+    decided.current = true;
+
+    if (!hasSession) {
+      setReady(true);
+      return;
+    }
+
     let active = true;
-    // Hold (spinner) until we've decided whether to lock, so the app can't
-    // render before the lock check finishes.
-    if (hasSession) setReady(false);
     (async () => {
-      if (!hasSession) {
-        if (active) {
-          setLocked(false);
-          setReady(true);
-        }
-        return;
-      }
       const shouldLock = (await biometricEnabled()) && (await biometricAvailable());
       if (!active) return;
       setLocked(shouldLock);
@@ -29,7 +33,7 @@ export function useBiometricLock(hasSession: boolean) {
     return () => {
       active = false;
     };
-  }, [hasSession]);
+  }, [loading, hasSession]);
 
   const unlock = useCallback(async () => {
     const ok = await authenticate();

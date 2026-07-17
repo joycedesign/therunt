@@ -12,7 +12,7 @@ import SignedIn from './screens/SignedIn';
 export default function App() {
   const { loading, checkingProfile, recovery, endRecovery, session, player, refreshPlayer } =
     useAuth();
-  const lock = useBiometricLock(!!session);
+  const lock = useBiometricLock(loading, !!session);
 
   if (!isSupabaseConfigured) {
     return (
