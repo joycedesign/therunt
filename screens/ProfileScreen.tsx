@@ -135,7 +135,6 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
       .update({
         name: name.trim(),
         preferred_name: preferredName.trim(),
-        membership_number: membershipNumber.trim() || null,
       })
       .eq('id', player.id);
     setBusy(false);
@@ -157,7 +156,7 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
     >
       <View style={styles.card}>
       <Text style={styles.label}>Your profile</Text>
-      <Text style={styles.email}>{email}</Text>
+      <Text style={styles.email}>Member #{membershipNumber || '—'}</Text>
 
       <Text style={styles.fieldLabel}>Full name</Text>
       <TextInput
@@ -176,17 +175,6 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
         placeholderTextColor="#7fa392"
         value={preferredName}
         onChangeText={setPreferredName}
-        editable={!busy}
-      />
-
-      <Text style={styles.fieldLabel}>Manly GC membership number</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. 6221"
-        placeholderTextColor="#7fa392"
-        keyboardType="number-pad"
-        value={membershipNumber}
-        onChangeText={setMembershipNumber}
         editable={!busy}
       />
 
