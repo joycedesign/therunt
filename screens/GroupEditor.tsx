@@ -3,7 +3,7 @@
 // Loads the week's groups + ungrouped In-players, owns the Supabase operations,
 // and renders a platform-specific board:
 //   - GroupsBoard.web.tsx    → HTML5 drag-and-drop
-//   - GroupsBoard.native.tsx → drag library (react-native-draggable-flatlist)
+//   - GroupsBoard.native.tsx → tap-to-move (Expo Go can't run the drag libs)
 // Both call the same operations (admins only, enforced by RLS).
 
 import { useCallback, useEffect, useState } from 'react';

@@ -1,14 +1,10 @@
-// Group editing board — native (react-native-draggable-flatlist).
-// One list with group headers; long-press a player and drag to another group
-// or reorder. Drag into "Not in a group" to remove; drag an ungrouped player
-// into a group to add.
+// Group editing board — native (tap to move/remove).
+// (Native drag-and-drop needs libraries incompatible with Expo Go SDK 54, so
+// on the phone we use a reliable tap menu; web keeps HTML5 drag-and-drop.)
 
-import { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import DraggableFlatList, {
-  type RenderItemParams,
-} from 'react-native-draggable-flatlist';
-import type { Group, Ungrouped } from './GroupEditor';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { Group, Member, Ungrouped } from './GroupEditor';
 
 type Props = {
   groups: Group[];
@@ -19,115 +15,84 @@ type Props = {
   onRequestAdd: (groupId: string) => void;
 };
 
-type Row =
-  | { type: 'header'; key: string; groupId: string | null; title: string }
-  | {
-      type: 'player';
-      key: string;
-      groupId: string | null;
-      gmId: string | null;
-      playerId: string;
-      name: string;
-      isBlocker: boolean;
-    };
-
-export default function GroupsBoard({ groups, ungrouped, onMove, onAdd, onRemove }: Props) {
-  const data: Row[] = useMemo(() => {
-    const rows: Row[] = [];
-    groups.forEach((g) => {
-      rows.push({ type: 'header', key: `h-${g.id}`, groupId: g.id, title: g.name });
-      g.members.forEach((m) =>
-        rows.push({
-          type: 'player',
-          key: `p-${m.gmId}`,
-          groupId: g.id,
-          gmId: m.gmId,
-          playerId: m.playerId,
-          name: m.name,
-          isBlocker: m.isBlocker,
-        })
-      );
-    });
-    rows.push({ type: 'header', key: 'h-ungrouped', groupId: null, title: 'Not in a group' });
-    ungrouped.forEach((u) =>
-      rows.push({
-        type: 'player',
-        key: `u-${u.playerId}`,
-        groupId: null,
-        gmId: null,
-        playerId: u.playerId,
-        name: u.name,
-        isBlocker: false,
-      })
-    );
-    return rows;
-  }, [groups, ungrouped]);
-
-  function handleDragEnd({ data: nd, to }: { data: Row[]; from: number; to: number }) {
-    const moved = nd[to];
-    if (!moved || moved.type !== 'player') return;
-
-    let targetGroupId: string | null = null;
-    for (let i = to - 1; i >= 0; i--) {
-      if (nd[i].type === 'header') {
-        targetGroupId = nd[i].groupId;
-        break;
-      }
-    }
-    let beforeGmId: string | undefined;
-    for (let i = to + 1; i < nd.length; i++) {
-      const r = nd[i];
-      if (r.type === 'header') break;
-      if (r.type === 'player' && r.gmId) {
-        beforeGmId = r.gmId;
-        break;
-      }
-    }
-
-    if (targetGroupId === null) {
-      if (moved.gmId) onRemove(moved.gmId);
-      return;
-    }
-    if (moved.gmId) onMove(moved.gmId, targetGroupId, beforeGmId);
-    else onAdd(targetGroupId, moved.playerId);
-  }
-
-  function renderItem({ item, drag, isActive }: RenderItemParams<Row>) {
-    if (item.type === 'header') {
-      return (
-        <View style={styles.header}>
-          <Text style={styles.headerText}>{item.title}</Text>
-        </View>
-      );
-    }
-    return (
-      <TouchableOpacity
-        onLongPress={drag}
-        disabled={isActive}
-        style={[styles.row, isActive && styles.rowActive]}
-      >
-        <Text style={styles.name}>
-          {item.name}
-          {item.isBlocker ? ' (blocker)' : ''}
-        </Text>
-        <Text style={styles.grip}>≡</Text>
-      </TouchableOpacity>
-    );
-  }
+export default function GroupsBoard({ groups, ungrouped, onMove, onRemove, onRequestAdd }: Props) {
+  const [menuFor, setMenuFor] = useState<Member | null>(null);
 
   return (
     <View style={styles.fill}>
-      <Text style={styles.hint}>
-        Long-press a player and drag to a group or to reorder. Drag to "Not in a group" to remove.
-      </Text>
-      <DraggableFlatList
-        data={data}
-        keyExtractor={(r) => r.key}
-        renderItem={renderItem}
-        onDragEnd={handleDragEnd}
-        activationDistance={12}
-        containerStyle={styles.fill}
-      />
+      <Text style={styles.hint}>Tap a player to move them to another group or remove them.</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        {groups.map((g) => (
+          <View key={g.id} style={styles.group}>
+            <View style={styles.groupHeader}>
+              <Text style={styles.groupName}>{g.name}</Text>
+              <TouchableOpacity onPress={() => onRequestAdd(g.id)}>
+                <Text style={styles.add}>+ Add</Text>
+              </TouchableOpacity>
+            </View>
+            {g.members.map((m) => (
+              <TouchableOpacity key={m.gmId} style={styles.row} onPress={() => setMenuFor(m)}>
+                <Text style={styles.name}>
+                  {m.name}
+                  {m.isBlocker ? ' (blocker)' : ''}
+                </Text>
+                <Text style={styles.chev}>›</Text>
+              </TouchableOpacity>
+            ))}
+            {g.guests.map((gn, i) => (
+              <Text key={`gu-${i}`} style={styles.guest}>
+                {gn} (guest)
+              </Text>
+            ))}
+          </View>
+        ))}
+
+        {ungrouped.length > 0 && (
+          <View style={styles.group}>
+            <Text style={styles.groupName}>Not in a group</Text>
+            {ungrouped.map((u) => (
+              <Text key={u.playerId} style={styles.ung}>
+                {u.name}
+              </Text>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      {menuFor && (
+        <View style={styles.overlay}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{menuFor.name}</Text>
+            <Text style={styles.dim}>Move to group:</Text>
+            {groups.map((g) => (
+              <TouchableOpacity
+                key={g.id}
+                style={styles.pick}
+                onPress={() => {
+                  const m = menuFor;
+                  setMenuFor(null);
+                  if (m) onMove(m.gmId, g.id);
+                }}
+              >
+                <Text style={styles.pickName}>{g.name}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.pick}
+              onPress={() => {
+                const m = menuFor;
+                setMenuFor(null);
+                if (m) onRemove(m.gmId);
+              }}
+            >
+              <Text style={[styles.pickName, { color: '#ff9b9b' }]}>Remove from group</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMenuFor(null)}>
+              <Text style={styles.close}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -135,8 +100,16 @@ export default function GroupsBoard({ groups, ungrouped, onMove, onAdd, onRemove
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   hint: { color: '#9fc6b3', fontSize: 13, marginBottom: 8 },
-  header: { paddingTop: 14, paddingBottom: 4 },
-  headerText: { color: '#7fffb0', fontSize: 15, fontWeight: '700' },
+  content: { paddingBottom: 40 },
+  group: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupName: { color: '#7fffb0', fontSize: 15, fontWeight: '700' },
+  add: { color: '#7fffb0', fontSize: 14, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -146,7 +119,31 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 8,
   },
-  rowActive: { backgroundColor: '#0f4a39', opacity: 0.9 },
   name: { color: '#ffffff', fontSize: 15 },
-  grip: { color: '#9fc6b3', fontSize: 18 },
+  chev: { color: '#7fffb0', fontSize: 20, fontWeight: '700' },
+  guest: { color: '#9fc6b3', fontSize: 13, fontStyle: 'italic', marginTop: 8 },
+  ung: { color: '#dff3e8', fontSize: 15, paddingVertical: 6 },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  card: {
+    backgroundColor: '#0f4a39',
+    borderRadius: 14,
+    padding: 20,
+    width: '100%',
+    maxWidth: 340,
+  },
+  cardTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  dim: { color: '#9fc6b3', fontSize: 13, marginBottom: 4 },
+  pick: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  pickName: { color: '#ffffff', fontSize: 16 },
+  close: { color: '#bfe3d0', fontSize: 15, textAlign: 'center', marginTop: 14 },
 });

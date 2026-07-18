@@ -1,6 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
 import { useBiometricLock } from './lib/useBiometricLock';
@@ -48,10 +47,10 @@ export default function App() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <>
       {content()}
       <StatusBar style="light" />
-    </GestureHandlerRootView>
+    </>
   );
 }
 
