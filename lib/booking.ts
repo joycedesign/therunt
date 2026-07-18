@@ -23,12 +23,13 @@ async function refreshWeekStatus(weekId: string): Promise<void> {
 export async function bookGroup(
   groupId: string,
   weekId: string,
-  teeTimeISO: string
+  teeTimeISO: string,
+  startingTee: number
 ): Promise<void> {
   if (!supabase) throw new Error('No connection.');
   const { error } = await supabase
     .from('groups')
-    .update({ tee_time: teeTimeISO, booking_status: 'confirmed' })
+    .update({ tee_time: teeTimeISO, booking_status: 'confirmed', starting_tee: startingTee })
     .eq('id', groupId);
   if (error) throw error;
   await refreshWeekStatus(weekId);

@@ -41,6 +41,7 @@ type DrawGroup = {
   entries: GroupEntry[];
   bookingStatus: string;
   teeTime: string | null;
+  startingTee: number | null;
 };
 type GroupsMap = Record<string, DrawGroup[]>;
 type InPlayer = { id: string; name: string };
@@ -84,6 +85,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     weekId: string;
     startDate: string;
     teeTime: string | null;
+    startingTee: number | null;
   } | null>(null);
 
   // Add-guest modal state.
@@ -206,7 +208,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     // Draw result (groups) for each visible week.
     const { data: grp, error: grErr } = await supabase
       .from('groups')
-      .select('id, week_id, group_name, booking_status, tee_time')
+      .select('id, week_id, group_name, booking_status, tee_time, starting_tee')
       .in('week_id', weekIds)
       .order('group_name');
     if (grErr) {
@@ -240,6 +242,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         group_name: string;
         booking_status: string;
         tee_time: string | null;
+        starting_tee: number | null;
       }) => {
         const entries = [...(byGroup[g.id] ?? []), ...(guestByGroup[g.id] ?? [])];
         (grmap[g.week_id] ??= []).push({
@@ -248,6 +251,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
           entries,
           bookingStatus: g.booking_status,
           teeTime: g.tee_time,
+          startingTee: g.starting_tee,
         });
       }
     );
@@ -386,11 +390,11 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     else void load();
   }
 
-  async function confirmTee(d: Date) {
+  async function confirmTee(d: Date, tee: number) {
     if (!pickerGroup) return;
     setError(null);
     try {
-      await bookGroup(pickerGroup.groupId, pickerGroup.weekId, d.toISOString());
+      await bookGroup(pickerGroup.groupId, pickerGroup.weekId, d.toISOString(), tee);
       setPickerGroup(null);
       await load();
     } catch (e) {
@@ -541,40 +545,47 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                               {booked ? (
                                 <View style={styles.bookRow}>
                                   <Text style={styles.bookedText}>
-                                    ✅ Booked · {formatTeeTime(grp.teeTime as string)}
+                                    ✅ Booked · {formatTeeTime(grp.teeTime as string)} ·{' '}
+                                    {grp.startingTee === 11 ? '11th' : '1st'} tee
                                   </Text>
-                                  <View style={styles.actionLinks}>
-                                    <TouchableOpacity
-                                      onPress={() =>
-                                        setPickerGroup({
-                                          groupId: grp.id,
-                                          weekId: w.id,
-                                          startDate: w.start_date,
-                                          teeTime: grp.teeTime,
-                                        })
-                                      }
-                                    >
-                                      <Text style={styles.addGuestText}>Edit</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => unbook(grp.id, w.id)}>
-                                      <Text style={styles.resetLink}>Unbook</Text>
-                                    </TouchableOpacity>
-                                  </View>
+                                  {isAdmin && (
+                                    <View style={styles.actionLinks}>
+                                      <TouchableOpacity
+                                        onPress={() =>
+                                          setPickerGroup({
+                                            groupId: grp.id,
+                                            weekId: w.id,
+                                            startDate: w.start_date,
+                                            teeTime: grp.teeTime,
+                                            startingTee: grp.startingTee,
+                                          })
+                                        }
+                                      >
+                                        <Text style={styles.addGuestText}>Edit</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity onPress={() => unbook(grp.id, w.id)}>
+                                        <Text style={styles.resetLink}>Unbook</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
                                 </View>
                               ) : (
-                                <TouchableOpacity
-                                  style={styles.bookBtn}
-                                  onPress={() =>
-                                    setPickerGroup({
-                                      groupId: grp.id,
-                                      weekId: w.id,
-                                      startDate: w.start_date,
-                                      teeTime: grp.teeTime,
-                                    })
-                                  }
-                                >
-                                  <Text style={styles.bookBtnText}>Set tee time &amp; book</Text>
-                                </TouchableOpacity>
+                                isAdmin && (
+                                  <TouchableOpacity
+                                    style={styles.bookBtn}
+                                    onPress={() =>
+                                      setPickerGroup({
+                                        groupId: grp.id,
+                                        weekId: w.id,
+                                        startDate: w.start_date,
+                                        teeTime: grp.teeTime,
+                                        startingTee: grp.startingTee,
+                                      })
+                                    }
+                                  >
+                                    <Text style={styles.bookBtnText}>Set tee time &amp; book</Text>
+                                  </TouchableOpacity>
+                                )
                               )}
                             </View>
                           );
@@ -795,6 +806,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
             ? initialTee(pickerGroup.startDate, pickerGroup.teeTime)
             : new Date()
         }
+        initialTee={pickerGroup?.startingTee ?? 1}
         onConfirm={confirmTee}
         onClose={() => setPickerGroup(null)}
       />
