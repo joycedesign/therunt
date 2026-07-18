@@ -1,10 +1,8 @@
-// Admin group editor for a week (shell).
+// Admin group editor for a week.
 //
-// Loads the week's groups + ungrouped In-players, owns the Supabase operations,
-// and renders a platform-specific board:
-//   - GroupsBoard.web.tsx    → HTML5 drag-and-drop
-//   - GroupsBoard.native.tsx → tap-to-move (Expo Go can't run the drag libs)
-// Both call the same operations (admins only, enforced by RLS).
+// Each player has an "Edit" button → Remove from group, Move to another group,
+// or Replace with an ungrouped player. Plus "+ Add" per group. Works the same
+// on web and phone (no drag libraries). Admin-only, enforced by RLS.
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -17,12 +15,11 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import GroupsBoard from './GroupsBoard';
 
 type NamePart = { preferred_name: string | null; name: string };
-export type Member = { gmId: string; playerId: string; name: string; isBlocker: boolean };
-export type Group = { id: string; name: string; members: Member[]; guests: string[] };
-export type Ungrouped = { playerId: string; name: string };
+type Member = { gmId: string; playerId: string; name: string; isBlocker: boolean };
+type Group = { id: string; name: string; members: Member[]; guests: string[] };
+type Ungrouped = { playerId: string; name: string };
 
 function nameOf(p: NamePart | NamePart[] | null): string {
   const x = Array.isArray(p) ? p[0] : p;
@@ -42,6 +39,7 @@ export default function GroupEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addFor, setAddFor] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ m: Member; groupId: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -131,17 +129,14 @@ export default function GroupEditor({
     }
   }
 
-  async function moveMember(gmId: string, targetGroupId: string, beforeGmId?: string) {
+  async function moveMember(gmId: string, targetGroupId: string) {
     if (!supabase) return;
     const target = groups.find((g) => g.id === targetGroupId);
-    if (!target) return;
-    const ids = target.members.filter((m) => m.gmId !== gmId).map((m) => m.gmId);
-    const idx = beforeGmId ? ids.indexOf(beforeGmId) : ids.length;
-    ids.splice(idx < 0 ? ids.length : idx, 0, gmId);
-    await supabase.from('group_members').update({ group_id: targetGroupId }).eq('id', gmId);
-    for (let i = 0; i < ids.length; i++) {
-      await supabase.from('group_members').update({ position: i }).eq('id', ids[i]);
-    }
+    const pos = target ? target.members.length : 0;
+    await supabase
+      .from('group_members')
+      .update({ group_id: targetGroupId, position: pos })
+      .eq('id', gmId);
   }
 
   async function removeMember(gmId: string) {
@@ -158,6 +153,14 @@ export default function GroupEditor({
       .insert({ group_id: groupId, player_id: playerId, is_blocker: false, position: pos });
   }
 
+  async function replaceMember(gmId: string, newPlayerId: string) {
+    if (!supabase) return;
+    await supabase
+      .from('group_members')
+      .update({ player_id: newPlayerId, is_blocker: false })
+      .eq('id', gmId);
+  }
+
   if (loading) {
     return (
       <Modal visible transparent animationType="slide">
@@ -167,6 +170,8 @@ export default function GroupEditor({
       </Modal>
     );
   }
+
+  const otherGroups = editing ? groups.filter((g) => g.id !== editing.groupId) : [];
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -180,19 +185,51 @@ export default function GroupEditor({
         {busy && <ActivityIndicator color="#7fffb0" />}
         {error && <Text style={styles.error}>⚠️ {error}</Text>}
 
-        <GroupsBoard
-          groups={groups}
-          ungrouped={ungrouped}
-          onMove={(gmId, tg, before) => run(() => moveMember(gmId, tg, before))}
-          onAdd={(gid, pid) => run(() => addMember(gid, pid))}
-          onRemove={(gmId) => run(() => removeMember(gmId))}
-          onRequestAdd={(gid) => setAddFor(gid)}
-        />
+        <ScrollView contentContainerStyle={styles.content}>
+          {groups.map((g) => (
+            <View key={g.id} style={styles.group}>
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupName}>{g.name}</Text>
+                <TouchableOpacity onPress={() => setAddFor(g.id)}>
+                  <Text style={styles.add}>+ Add</Text>
+                </TouchableOpacity>
+              </View>
+              {g.members.map((m) => (
+                <View key={m.gmId} style={styles.row}>
+                  <Text style={styles.name}>
+                    {m.name}
+                    {m.isBlocker ? ' (blocker)' : ''}
+                  </Text>
+                  <TouchableOpacity onPress={() => setEditing({ m, groupId: g.id })}>
+                    <Text style={styles.edit}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {g.guests.map((gn, i) => (
+                <Text key={`gu-${i}`} style={styles.guest}>
+                  {gn} (guest)
+                </Text>
+              ))}
+            </View>
+          ))}
 
+          {ungrouped.length > 0 && (
+            <View style={styles.group}>
+              <Text style={styles.groupName}>Not in a group</Text>
+              {ungrouped.map((u) => (
+                <Text key={u.playerId} style={styles.ung}>
+                  {u.name}
+                </Text>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Add player */}
         {addFor !== null && (
           <View style={styles.overlay}>
-            <View style={styles.pickerCard}>
-              <Text style={styles.pickerTitle}>Add player</Text>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Add player</Text>
               <ScrollView style={{ maxHeight: 320 }}>
                 {ungrouped.length === 0 ? (
                   <Text style={styles.dim}>No ungrouped players.</Text>
@@ -200,7 +237,7 @@ export default function GroupEditor({
                   ungrouped.map((u) => (
                     <TouchableOpacity
                       key={u.playerId}
-                      style={styles.pickRow}
+                      style={styles.pick}
                       onPress={() => {
                         const gid = addFor;
                         setAddFor(null);
@@ -213,6 +250,66 @@ export default function GroupEditor({
                 )}
               </ScrollView>
               <TouchableOpacity onPress={() => setAddFor(null)}>
+                <Text style={styles.close}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Edit player */}
+        {editing && (
+          <View style={styles.overlay}>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{editing.m.name}</Text>
+
+              <TouchableOpacity
+                style={styles.pick}
+                onPress={() => {
+                  const gm = editing.m.gmId;
+                  setEditing(null);
+                  run(() => removeMember(gm));
+                }}
+              >
+                <Text style={[styles.pickName, { color: '#ff9b9b' }]}>Remove from group</Text>
+              </TouchableOpacity>
+
+              {otherGroups.length > 0 && <Text style={styles.dim}>Move to group:</Text>}
+              {otherGroups.map((g) => (
+                <TouchableOpacity
+                  key={g.id}
+                  style={styles.pick}
+                  onPress={() => {
+                    const gm = editing.m.gmId;
+                    setEditing(null);
+                    run(() => moveMember(gm, g.id));
+                  }}
+                >
+                  <Text style={styles.pickName}>{g.name}</Text>
+                </TouchableOpacity>
+              ))}
+
+              <Text style={styles.dim}>Replace with:</Text>
+              <ScrollView style={{ maxHeight: 200 }}>
+                {ungrouped.length === 0 ? (
+                  <Text style={styles.dim}>No available players.</Text>
+                ) : (
+                  ungrouped.map((u) => (
+                    <TouchableOpacity
+                      key={u.playerId}
+                      style={styles.pick}
+                      onPress={() => {
+                        const gm = editing.m.gmId;
+                        setEditing(null);
+                        run(() => replaceMember(gm, u.playerId));
+                      }}
+                    >
+                      <Text style={styles.pickName}>{u.name}</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+
+              <TouchableOpacity onPress={() => setEditing(null)}>
                 <Text style={styles.close}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -234,6 +331,29 @@ const styles = StyleSheet.create({
   title: { color: '#ffffff', fontSize: 22, fontWeight: '800' },
   done: { color: '#7fffb0', fontSize: 16, fontWeight: '700' },
   error: { color: '#ffd2d2', fontSize: 14, marginBottom: 8 },
+  content: { paddingBottom: 40 },
+  group: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupName: { color: '#7fffb0', fontSize: 15, fontWeight: '700' },
+  add: { color: '#7fffb0', fontSize: 14, fontWeight: '600' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  name: { color: '#ffffff', fontSize: 15, flex: 1, paddingRight: 12 },
+  edit: { color: '#7fffb0', fontSize: 14, fontWeight: '700' },
+  guest: { color: '#9fc6b3', fontSize: 13, fontStyle: 'italic', marginTop: 8 },
+  ung: { color: '#dff3e8', fontSize: 15, paddingVertical: 6 },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -245,16 +365,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  pickerCard: {
+  card: {
     backgroundColor: '#0f4a39',
     borderRadius: 14,
     padding: 20,
     width: '100%',
     maxWidth: 340,
   },
-  pickerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  dim: { color: '#9fc6b3', fontSize: 13, marginTop: 6, marginBottom: 4 },
-  pickRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  cardTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  dim: { color: '#9fc6b3', fontSize: 13, marginTop: 10, marginBottom: 2 },
+  pick: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   pickName: { color: '#ffffff', fontSize: 16 },
   close: { color: '#bfe3d0', fontSize: 15, textAlign: 'center', marginTop: 14 },
 });
