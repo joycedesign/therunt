@@ -822,6 +822,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
       {editorWeekId && (
         <GroupEditor
           weekId={editorWeekId}
+          player={player}
           onClose={() => {
             setEditorWeekId(null);
             void load();
