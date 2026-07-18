@@ -10,6 +10,7 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -39,12 +40,13 @@ export default function GroupEditor({
   onClose: () => void;
 }) {
   const [groups, setGroups] = useState<Group[]>([]);
-  const [ungrouped, setUngrouped] = useState<Ungrouped[]>([]);
+  const [candidates, setCandidates] = useState<Ungrouped[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [addFor, setAddFor] = useState<string | null>(null);
+  const [addAsBlocker, setAddAsBlocker] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestGa, setGuestGa] = useState('');
 
@@ -103,17 +105,19 @@ export default function GroupEditor({
       }))
     );
 
-    const { data: av } = await supabase
-      .from('availability')
-      .select('player_id, players(preferred_name, name)')
-      .eq('week_id', weekId)
-      .eq('is_available', true);
-    setUngrouped(
-      (av ?? [])
-        .filter((r: { player_id: string }) => !grouped.has(r.player_id))
-        .map((r: { player_id: string; players: NamePart | NamePart[] | null }) => ({
-          playerId: r.player_id,
-          name: nameOf(r.players),
+    // Anyone (active member) not already in a group this week can be added.
+    const { data: allP } = await supabase
+      .from('players')
+      .select('id, preferred_name, name')
+      .eq('status', 'active')
+      .order('preferred_name', { nullsFirst: false })
+      .order('name');
+    setCandidates(
+      (allP ?? [])
+        .filter((p: { id: string }) => !grouped.has(p.id))
+        .map((p: { id: string; preferred_name: string | null; name: string }) => ({
+          playerId: p.id,
+          name: nameOf(p),
         }))
     );
   }, [weekId]);
@@ -146,13 +150,13 @@ export default function GroupEditor({
     await supabase.from('guests').delete().eq('id', guestId);
   }
 
-  async function addMember(groupId: string, playerId: string) {
+  async function addMember(groupId: string, playerId: string, isBlocker: boolean) {
     if (!supabase) return;
     const g = groups.find((x) => x.id === groupId);
     const pos = g ? g.members.length : 0;
     await supabase
       .from('group_members')
-      .insert({ group_id: groupId, player_id: playerId, is_blocker: false, position: pos });
+      .insert({ group_id: groupId, player_id: playerId, is_blocker: isBlocker, position: pos });
   }
 
   async function addGuest(groupId: string, name: string, ga: string) {
@@ -170,6 +174,7 @@ export default function GroupEditor({
   function openAdd(groupId: string) {
     setGuestName('');
     setGuestGa('');
+    setAddAsBlocker(false);
     setError(null);
     setAddFor(groupId);
   }
@@ -228,17 +233,6 @@ export default function GroupEditor({
               ))}
             </View>
           ))}
-
-          {ungrouped.length > 0 && (
-            <View style={styles.group}>
-              <Text style={styles.groupName}>Not in a group</Text>
-              {ungrouped.map((u) => (
-                <Text key={u.playerId} style={styles.ung}>
-                  {u.name}
-                </Text>
-              ))}
-            </View>
-          )}
         </ScrollView>
 
         {addFor !== null && (
@@ -246,19 +240,32 @@ export default function GroupEditor({
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Add to group</Text>
 
+              <View style={styles.blockerRow}>
+                <Text style={styles.blockerLabel}>Add as blocker</Text>
+                <Switch
+                  value={addAsBlocker}
+                  onValueChange={setAddAsBlocker}
+                  trackColor={{ false: '#8a9a92', true: '#22c55e' }}
+                  thumbColor="#ffffff"
+                  ios_backgroundColor="#8a9a92"
+                  {...({ activeThumbColor: '#ffffff' } as object)}
+                />
+              </View>
+
               <Text style={styles.dim}>Add a player</Text>
               <ScrollView style={{ maxHeight: 220 }}>
-                {ungrouped.length === 0 ? (
-                  <Text style={styles.dim}>No ungrouped players.</Text>
+                {candidates.length === 0 ? (
+                  <Text style={styles.dim}>No players available.</Text>
                 ) : (
-                  ungrouped.map((u) => (
+                  candidates.map((u) => (
                     <TouchableOpacity
                       key={u.playerId}
                       style={styles.pick}
                       onPress={() => {
                         const gid = addFor;
+                        const blk = addAsBlocker;
                         setAddFor(null);
-                        if (gid) run(() => addMember(gid, u.playerId));
+                        if (gid) run(() => addMember(gid, u.playerId, blk));
                       }}
                     >
                       <Text style={styles.pickName}>{u.name}</Text>
@@ -364,6 +371,13 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
   cardTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  blockerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  blockerLabel: { color: '#ffffff', fontSize: 14 },
   dim: { color: '#9fc6b3', fontSize: 13, marginTop: 8, marginBottom: 4 },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 12 },
   pick: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
