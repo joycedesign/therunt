@@ -1,15 +1,15 @@
-// Admin group editor for a week.
+// Admin group editor for a week (shell).
 //
-// Web: HTML5 drag-and-drop — drag a player onto another group (move) or onto a
-// player (drop before, to reorder). Phone: tap a player for a move/remove/reorder
-// menu. Both call the same Supabase operations (admins only, enforced by RLS).
+// Loads the week's groups + ungrouped In-players, owns the Supabase operations,
+// and renders a platform-specific board:
+//   - GroupsBoard.web.tsx    → HTML5 drag-and-drop
+//   - GroupsBoard.native.tsx → drag library (react-native-draggable-flatlist)
+// Both call the same operations (admins only, enforced by RLS).
 
 import { useCallback, useEffect, useState } from 'react';
-import type { DragEvent as RDragEvent } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,11 +17,12 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import GroupsBoard from './GroupsBoard';
 
 type NamePart = { preferred_name: string | null; name: string };
-type Member = { gmId: string; playerId: string; name: string; isBlocker: boolean };
-type Group = { id: string; name: string; members: Member[]; guests: string[] };
-type Ungrouped = { playerId: string; name: string };
+export type Member = { gmId: string; playerId: string; name: string; isBlocker: boolean };
+export type Group = { id: string; name: string; members: Member[]; guests: string[] };
+export type Ungrouped = { playerId: string; name: string };
 
 function nameOf(p: NamePart | NamePart[] | null): string {
   const x = Array.isArray(p) ? p[0] : p;
@@ -40,8 +41,7 @@ export default function GroupEditor({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addFor, setAddFor] = useState<string | null>(null); // group id to add to
-  const [menuFor, setMenuFor] = useState<Member | null>(null); // native move menu
+  const [addFor, setAddFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -98,7 +98,6 @@ export default function GroupEditor({
       }))
     );
 
-    // In players not currently in any group.
     const { data: av } = await supabase
       .from('availability')
       .select('player_id, players(preferred_name, name)')
@@ -132,19 +131,13 @@ export default function GroupEditor({
     }
   }
 
-  // Move a member before `beforeGmId` in target group (or to the end).
   async function moveMember(gmId: string, targetGroupId: string, beforeGmId?: string) {
     if (!supabase) return;
     const target = groups.find((g) => g.id === targetGroupId);
     if (!target) return;
-    const moving =
-      groups.flatMap((g) => g.members).find((m) => m.gmId === gmId) ?? null;
-    if (!moving) return;
-    // New ordered list of gmIds for the target group.
     const ids = target.members.filter((m) => m.gmId !== gmId).map((m) => m.gmId);
     const idx = beforeGmId ? ids.indexOf(beforeGmId) : ids.length;
     ids.splice(idx < 0 ? ids.length : idx, 0, gmId);
-    // Point the moved row at the target group, then reindex positions.
     await supabase.from('group_members').update({ group_id: targetGroupId }).eq('id', gmId);
     for (let i = 0; i < ids.length; i++) {
       await supabase.from('group_members').update({ position: i }).eq('id', ids[i]);
@@ -186,188 +179,49 @@ export default function GroupEditor({
         </View>
         {busy && <ActivityIndicator color="#7fffb0" />}
         {error && <Text style={styles.error}>⚠️ {error}</Text>}
-        <Text style={styles.hint}>
-          {Platform.OS === 'web'
-            ? 'Drag a player onto a group to move them, or onto another player to reorder.'
-            : 'Tap a player to move, reorder, or remove them.'}
-        </Text>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          {groups.map((g) => (
-            <WebOr
-              key={g.id}
-              web={
-                <div
-                  onDragOver={(e: RDragEvent<HTMLDivElement>) => e.preventDefault()}
-                  onDrop={(e: RDragEvent<HTMLDivElement>) => {
-                    e.preventDefault();
-                    const gmId = e.dataTransfer.getData('text');
-                    if (gmId) void run(() => moveMember(gmId, g.id));
-                  }}
-                  style={webGroupStyle}
-                >
-                  {groupInner(g)}
-                </div>
-              }
-              native={<View style={styles.group}>{groupInner(g)}</View>}
-            />
-          ))}
+        <GroupsBoard
+          groups={groups}
+          ungrouped={ungrouped}
+          onMove={(gmId, tg, before) => run(() => moveMember(gmId, tg, before))}
+          onAdd={(gid, pid) => run(() => addMember(gid, pid))}
+          onRemove={(gmId) => run(() => removeMember(gmId))}
+          onRequestAdd={(gid) => setAddFor(gid)}
+        />
 
-          {ungrouped.length > 0 && (
-            <View style={styles.group}>
-              <Text style={styles.groupName}>Not in a group</Text>
-              {ungrouped.map((u) => (
-                <Text key={u.playerId} style={styles.ungroupedName}>
-                  {u.name}
-                </Text>
-              ))}
-            </View>
-          )}
-        </ScrollView>
-      </View>
-
-      {/* Native: add-to-group picker */}
-      <Modal visible={addFor !== null} transparent animationType="fade" onRequestClose={() => setAddFor(null)}>
-        <View style={styles.pickerBackdrop}>
-          <View style={styles.pickerCard}>
-            <Text style={styles.pickerTitle}>Add player</Text>
-            <ScrollView style={{ maxHeight: 320 }}>
-              {ungrouped.length === 0 ? (
-                <Text style={styles.dim}>No ungrouped players.</Text>
-              ) : (
-                ungrouped.map((u) => (
-                  <TouchableOpacity
-                    key={u.playerId}
-                    style={styles.pickRow}
-                    onPress={() => {
-                      const gid = addFor;
-                      setAddFor(null);
-                      if (gid) void run(() => addMember(gid, u.playerId));
-                    }}
-                  >
-                    <Text style={styles.pickName}>{u.name}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-            <TouchableOpacity onPress={() => setAddFor(null)}>
-              <Text style={styles.close}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Native: per-player move/remove menu */}
-      <Modal visible={menuFor !== null} transparent animationType="fade" onRequestClose={() => setMenuFor(null)}>
-        <View style={styles.pickerBackdrop}>
-          <View style={styles.pickerCard}>
-            <Text style={styles.pickerTitle}>{menuFor?.name}</Text>
-            <Text style={styles.dim}>Move to group:</Text>
-            {groups.map((g) => (
-              <TouchableOpacity
-                key={g.id}
-                style={styles.pickRow}
-                onPress={() => {
-                  const m = menuFor;
-                  setMenuFor(null);
-                  if (m) void run(() => moveMember(m.gmId, g.id));
-                }}
-              >
-                <Text style={styles.pickName}>{g.name}</Text>
+        {addFor !== null && (
+          <View style={styles.overlay}>
+            <View style={styles.pickerCard}>
+              <Text style={styles.pickerTitle}>Add player</Text>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {ungrouped.length === 0 ? (
+                  <Text style={styles.dim}>No ungrouped players.</Text>
+                ) : (
+                  ungrouped.map((u) => (
+                    <TouchableOpacity
+                      key={u.playerId}
+                      style={styles.pickRow}
+                      onPress={() => {
+                        const gid = addFor;
+                        setAddFor(null);
+                        if (gid) run(() => addMember(gid, u.playerId));
+                      }}
+                    >
+                      <Text style={styles.pickName}>{u.name}</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+              <TouchableOpacity onPress={() => setAddFor(null)}>
+                <Text style={styles.close}>Cancel</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.pickRow}
-              onPress={() => {
-                const m = menuFor;
-                setMenuFor(null);
-                if (m) void run(() => removeMember(m.gmId));
-              }}
-            >
-              <Text style={[styles.pickName, { color: '#ff9b9b' }]}>Remove from group</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMenuFor(null)}>
-              <Text style={styles.close}>Cancel</Text>
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        )}
+      </View>
     </Modal>
   );
-
-  function groupInner(g: Group) {
-    return (
-      <>
-        <View style={styles.groupHeader}>
-          <Text style={styles.groupName}>{g.name}</Text>
-          <TouchableOpacity onPress={() => setAddFor(g.id)}>
-            <Text style={styles.addLink}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-        {g.members.map((m) => (
-          <WebOr
-            key={m.gmId}
-            web={
-              <div
-                draggable
-                onDragStart={(e: RDragEvent<HTMLDivElement>) =>
-                  e.dataTransfer.setData('text', m.gmId)
-                }
-                onDragOver={(e: RDragEvent<HTMLDivElement>) => e.preventDefault()}
-                onDrop={(e: RDragEvent<HTMLDivElement>) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const gmId = e.dataTransfer.getData('text');
-                  if (gmId && gmId !== m.gmId) void run(() => moveMember(gmId, g.id, m.gmId));
-                }}
-                style={webRowStyle}
-              >
-                {m.name}
-                {m.isBlocker ? ' (blocker)' : ''}
-              </div>
-            }
-            native={
-              <TouchableOpacity style={styles.memberRow} onPress={() => setMenuFor(m)}>
-                <Text style={styles.memberName}>
-                  {m.name}
-                  {m.isBlocker ? ' (blocker)' : ''}
-                </Text>
-                <Text style={styles.grip}>⋮⋮</Text>
-              </TouchableOpacity>
-            }
-          />
-        ))}
-        {g.guests.map((gn, i) => (
-          <Text key={`guest-${i}`} style={styles.guestName}>
-            {gn} (guest)
-          </Text>
-        ))}
-      </>
-    );
-  }
 }
-
-// Render a raw DOM node on web, a RN node on native.
-function WebOr({ web, native }: { web: React.ReactNode; native: React.ReactNode }) {
-  return Platform.OS === 'web' ? <>{web}</> : <>{native}</>;
-}
-
-const webGroupStyle = {
-  backgroundColor: 'rgba(255,255,255,0.08)',
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 12,
-} as const;
-
-const webRowStyle = {
-  backgroundColor: 'rgba(255,255,255,0.12)',
-  borderRadius: 8,
-  padding: 12,
-  marginTop: 8,
-  color: '#ffffff',
-  fontSize: 15,
-  cursor: 'grab',
-} as const;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b3d2e', paddingTop: 56, paddingHorizontal: 20 },
@@ -379,37 +233,13 @@ const styles = StyleSheet.create({
   },
   title: { color: '#ffffff', fontSize: 22, fontWeight: '800' },
   done: { color: '#7fffb0', fontSize: 16, fontWeight: '700' },
-  hint: { color: '#9fc6b3', fontSize: 13, marginBottom: 12 },
   error: { color: '#ffd2d2', fontSize: 14, marginBottom: 8 },
-  content: { paddingBottom: 40 },
-  group: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  groupName: { color: '#7fffb0', fontSize: 15, fontWeight: '700' },
-  addLink: { color: '#7fffb0', fontSize: 14, fontWeight: '600' },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-  },
-  memberName: { color: '#ffffff', fontSize: 15 },
-  grip: { color: '#9fc6b3', fontSize: 16 },
-  guestName: { color: '#9fc6b3', fontSize: 13, fontStyle: 'italic', marginTop: 8, paddingLeft: 4 },
-  ungroupedName: { color: '#dff3e8', fontSize: 15, paddingVertical: 6 },
-  pickerBackdrop: {
-    flex: 1,
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
