@@ -22,6 +22,7 @@ import { supabase } from '../lib/supabase';
 import { runDraw, resetDraw } from '../lib/draw';
 import { bookGroup, unbookGroup } from '../lib/booking';
 import TeeTimeModal from '../components/TeeTimeModal';
+import GroupEditor from './GroupEditor';
 import type { Player } from '../lib/useAuth';
 
 type Week = {
@@ -78,6 +79,8 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
   // Add-match modal state.
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const [matchBusy, setMatchBusy] = useState(false);
+
+  const [editorWeekId, setEditorWeekId] = useState<string | null>(null);
 
   // Tee-time picker state.
   const [pickerGroup, setPickerGroup] = useState<{
@@ -609,9 +612,14 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                             <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />
                           ) : (
                             <View style={styles.drawActions}>
-                              <TouchableOpacity onPress={() => randomize(w.id)}>
-                                <Text style={styles.addGuestText}>↻ Re-randomize</Text>
-                              </TouchableOpacity>
+                              <View style={styles.actionLinks}>
+                                <TouchableOpacity onPress={() => randomize(w.id)}>
+                                  <Text style={styles.addGuestText}>↻ Re-randomize</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setEditorWeekId(w.id)}>
+                                  <Text style={styles.addGuestText}>Edit groups</Text>
+                                </TouchableOpacity>
+                              </View>
                               <TouchableOpacity onPress={() => reset(w.id)}>
                                 <Text style={styles.resetLink}>Reset</Text>
                               </TouchableOpacity>
@@ -810,6 +818,16 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         onConfirm={confirmTee}
         onClose={() => setPickerGroup(null)}
       />
+
+      {editorWeekId && (
+        <GroupEditor
+          weekId={editorWeekId}
+          onClose={() => {
+            setEditorWeekId(null);
+            void load();
+          }}
+        />
+      )}
     </>
   );
 }
