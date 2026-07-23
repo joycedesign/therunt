@@ -138,16 +138,23 @@ export async function runDraw(weekId: string): Promise<void> {
     .map((r: { id: string }) => r.id)
     .filter((id: string) => !inSet.has(id));
 
+  // Matches and carts are the same constraint to the draw: keep the pair
+  // together. Union both sets of pairs.
   const { data: mt, error: e5 } = await supabase
     .from('matches')
     .select('player_a, player_b')
     .eq('week_id', weekId);
   if (e5) throw e5;
-  const matches = (mt ?? []).map(
-    (m: { player_a: string; player_b: string }) => [m.player_a, m.player_b] as [string, string]
+  const { data: ct, error: e6 } = await supabase
+    .from('carts')
+    .select('player_a, player_b')
+    .eq('week_id', weekId);
+  if (e6) throw e6;
+  const pairs = [...(mt ?? []), ...(ct ?? [])].map(
+    (p: { player_a: string; player_b: string }) => [p.player_a, p.player_b] as [string, string]
   );
 
-  const plan = computeGroups(inIds, guestsByHost, blockerPool, matches);
+  const plan = computeGroups(inIds, guestsByHost, blockerPool, pairs);
 
   const { error: e4 } = await supabase.rpc('apply_draw', {
     p_week_id: weekId,

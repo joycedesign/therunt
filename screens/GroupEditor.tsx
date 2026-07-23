@@ -240,72 +240,76 @@ export default function GroupEditor({
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Add to group</Text>
 
-              <View style={styles.blockerRow}>
-                <Text style={styles.blockerLabel}>Add as blocker</Text>
-                <Switch
-                  value={addAsBlocker}
-                  onValueChange={setAddAsBlocker}
-                  trackColor={{ false: '#8a9a92', true: '#22c55e' }}
-                  thumbColor="#ffffff"
-                  ios_backgroundColor="#8a9a92"
-                  {...({ activeThumbColor: '#ffffff' } as object)}
-                />
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Add a player</Text>
+                <ScrollView style={{ maxHeight: 200 }}>
+                  {candidates.length === 0 ? (
+                    <Text style={styles.dim}>No players available.</Text>
+                  ) : (
+                    candidates.map((u) => (
+                      <TouchableOpacity
+                        key={u.playerId}
+                        style={styles.pick}
+                        onPress={() => {
+                          const gid = addFor;
+                          const blk = addAsBlocker;
+                          setAddFor(null);
+                          if (gid) run(() => addMember(gid, u.playerId, blk));
+                        }}
+                      >
+                        <Text style={styles.pickName}>{u.name}</Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+                <View style={styles.blockerRow}>
+                  <Text style={styles.blockerLabel}>Add as blocker</Text>
+                  <Switch
+                    value={addAsBlocker}
+                    onValueChange={setAddAsBlocker}
+                    trackColor={{ false: '#8a9a92', true: '#22c55e' }}
+                    thumbColor="#ffffff"
+                    ios_backgroundColor="#8a9a92"
+                    {...({ activeThumbColor: '#ffffff' } as object)}
+                  />
+                </View>
               </View>
 
-              <Text style={styles.dim}>Add a player</Text>
-              <ScrollView style={{ maxHeight: 220 }}>
-                {candidates.length === 0 ? (
-                  <Text style={styles.dim}>No players available.</Text>
-                ) : (
-                  candidates.map((u) => (
-                    <TouchableOpacity
-                      key={u.playerId}
-                      style={styles.pick}
-                      onPress={() => {
-                        const gid = addFor;
-                        const blk = addAsBlocker;
-                        setAddFor(null);
-                        if (gid) run(() => addMember(gid, u.playerId, blk));
-                      }}
-                    >
-                      <Text style={styles.pickName}>{u.name}</Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
+              <Text style={styles.or}>or</Text>
 
-              <View style={styles.divider} />
-              <Text style={styles.dim}>Or add a guest</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Guest name"
-                placeholderTextColor="#7fa392"
-                value={guestName}
-                onChangeText={setGuestName}
-                editable={!busy}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Golf Australia number (optional)"
-                placeholderTextColor="#7fa392"
-                keyboardType="number-pad"
-                value={guestGa}
-                onChangeText={setGuestGa}
-                editable={!busy}
-              />
-              <TouchableOpacity
-                style={[styles.addGuestBtn, !guestName.trim() && styles.disabled]}
-                disabled={!guestName.trim()}
-                onPress={() => {
-                  const gid = addFor;
-                  const nm = guestName;
-                  const ga = guestGa;
-                  setAddFor(null);
-                  if (gid) run(() => addGuest(gid, nm, ga));
-                }}
-              >
-                <Text style={styles.addGuestText}>Add guest</Text>
-              </TouchableOpacity>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Add a guest</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Guest name"
+                  placeholderTextColor="#7fa392"
+                  value={guestName}
+                  onChangeText={setGuestName}
+                  editable={!busy}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Golf Australia number (optional)"
+                  placeholderTextColor="#7fa392"
+                  keyboardType="number-pad"
+                  value={guestGa}
+                  onChangeText={setGuestGa}
+                  editable={!busy}
+                />
+                <TouchableOpacity
+                  style={[styles.addGuestBtn, !guestName.trim() && styles.disabled]}
+                  disabled={!guestName.trim()}
+                  onPress={() => {
+                    const gid = addFor;
+                    const nm = guestName;
+                    const ga = guestGa;
+                    setAddFor(null);
+                    if (gid) run(() => addGuest(gid, nm, ga));
+                  }}
+                >
+                  <Text style={styles.addGuestText}>Add guest</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity onPress={() => setAddFor(null)}>
                 <Text style={styles.close}>Cancel</Text>
@@ -371,11 +375,24 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
   cardTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  // Two clearly separate panels — "Add a player" vs "Add a guest".
+  section: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 10,
+    padding: 12,
+  },
+  sectionTitle: { color: '#7fffb0', fontSize: 14, fontWeight: '700', marginBottom: 6 },
+  or: { color: '#9fc6b3', fontSize: 12, textAlign: 'center', paddingVertical: 8 },
   blockerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
   },
   blockerLabel: { color: '#ffffff', fontSize: 14 },
   dim: { color: '#9fc6b3', fontSize: 13, marginTop: 8, marginBottom: 4 },
