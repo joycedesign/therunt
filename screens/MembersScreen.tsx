@@ -243,10 +243,7 @@ export default function MembersScreen({ player }: { player: Player | null }) {
                   </Text>
                   {m.is_admin && <Text style={styles.adminBadge}>  admin</Text>}
                 </Text>
-                <Text style={styles.sub}>
-                  {m.name}
-                  {claimed ? '  ·  signed up' : ''}
-                </Text>
+                <Text style={styles.sub}>{m.name}</Text>
               </View>
               {editable && <Text style={styles.chevron}>›</Text>}
             </TouchableOpacity>
