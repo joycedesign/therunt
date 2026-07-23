@@ -49,8 +49,9 @@ type InPlayer = { id: string; name: string };
 type InByWeek = Record<string, InPlayer[]>;
 type Match = { id: string; a: string; b: string; playerA: string; playerB: string };
 type MatchesMap = Record<string, Match[]>;
-// Carts share the same shape as matches (a same-group pair).
-type CartsMap = Record<string, Match[]>;
+// A cart is a per-player flag: this player wants a cart this week.
+type Cart = { id: string; playerId: string; name: string };
+type CartsMap = Record<string, Cart[]>;
 
 type NamePart = { preferred_name: string | null; name: string };
 type RosterRow = { week_id: string; player_id: string; players: NamePart | NamePart[] | null };
@@ -83,8 +84,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const [matchBusy, setMatchBusy] = useState(false);
 
-  // Add-cart modal state.
-  const [cartFor, setCartFor] = useState<string | null>(null);
+  // Cart is a per-player toggle (no modal); this guards double-taps.
   const [cartBusy, setCartBusy] = useState(false);
 
   const [editorWeekId, setEditorWeekId] = useState<string | null>(null);
@@ -189,27 +189,23 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     );
     setMatches(mmap);
 
-    // Carts per week (same shape as matches).
+    // Carts per week (one row per player who wants a cart).
     const { data: ct, error: cErr } = await supabase
       .from('carts')
-      .select('id, week_id, player_a, player_b')
+      .select('id, week_id, player_id')
       .in('week_id', weekIds);
     if (cErr) {
       setError(cErr.message);
       return;
     }
     const cmap: CartsMap = {};
-    ((ct ?? []) as { id: string; week_id: string; player_a: string; player_b: string }[]).forEach(
-      (c) => {
-        (cmap[c.week_id] ??= []).push({
-          id: c.id,
-          a: nameById[c.player_a] ?? 'player',
-          b: nameById[c.player_b] ?? 'player',
-          playerA: c.player_a,
-          playerB: c.player_b,
-        });
-      }
-    );
+    ((ct ?? []) as { id: string; week_id: string; player_id: string }[]).forEach((c) => {
+      (cmap[c.week_id] ??= []).push({
+        id: c.id,
+        playerId: c.player_id,
+        name: nameById[c.player_id] ?? 'player',
+      });
+    });
     setCarts(cmap);
 
     // Guests for each visible week (with host name + assigned group).
@@ -428,23 +424,19 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     else void load();
   }
 
-  async function addCart(weekId: string, partnerId: string) {
+  async function addCart(weekId: string) {
     if (!supabase || !player) return;
     setCartBusy(true);
     setError(null);
     const { error } = await supabase.from('carts').insert({
       week_id: weekId,
-      player_a: player.id,
-      player_b: partnerId,
+      player_id: player.id,
     });
     setCartBusy(false);
     if (error) {
-      setError(
-        error.message.includes('carts_unique_pair') ? 'That cart already exists.' : error.message
-      );
+      setError(error.message);
       return;
     }
-    setCartFor(null);
     void load();
   }
 
@@ -522,20 +514,6 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
               (m) =>
                 (m.playerA === player.id && m.playerB === p.id) ||
                 (m.playerB === player.id && m.playerA === p.id)
-            )
-        )
-      : [];
-
-  // People you can share a cart with (In this week, not you, not already paired).
-  const cartMates =
-    cartFor && player
-      ? (inByWeek[cartFor] ?? []).filter(
-          (p) =>
-            p.id !== player.id &&
-            !(carts[cartFor] ?? []).some(
-              (c) =>
-                (c.playerA === player.id && c.playerB === p.id) ||
-                (c.playerB === player.id && c.playerA === p.id)
             )
         )
       : [];
@@ -701,7 +679,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                                   size={14}
                                   color="#ffffff"
                                 />{' '}
-                                {c.a} + {c.b}
+                                {c.name}
                               </Text>
                             ))}
                           </View>
@@ -780,9 +758,9 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                                     size={14}
                                     color="#ffffff"
                                   />{' '}
-                                  {c.a} + {c.b}
+                                  {c.name} <Text style={styles.guestTag}>(cart)</Text>
                                 </Text>
-                                {(c.playerA === player?.id || c.playerB === player?.id) && (
+                                {c.playerId === player?.id && (
                                   <TouchableOpacity onPress={() => removeCart(c.id)} hitSlop={8}>
                                     <Text style={styles.remove}>✕</Text>
                                   </TouchableOpacity>
@@ -796,14 +774,17 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                           <View style={styles.actionLinks}>
                             {isIn && (
                               <>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    setCartFor(w.id);
-                                    setError(null);
-                                  }}
-                                >
-                                  <Text style={styles.addGuestText}>+ Cart</Text>
-                                </TouchableOpacity>
+                                {!cartArr.some((c) => c.playerId === player?.id) && (
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      setError(null);
+                                      void addCart(w.id);
+                                    }}
+                                    disabled={cartBusy}
+                                  >
+                                    <Text style={styles.addGuestText}>+ Cart</Text>
+                                  </TouchableOpacity>
+                                )}
                                 <TouchableOpacity
                                   onPress={() => {
                                     setAddingFor(w.id);
@@ -930,43 +911,6 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
             {matchBusy && <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />}
             {error && matchFor && <Text style={styles.error}>⚠️ {error}</Text>}
             <TouchableOpacity onPress={() => setMatchFor(null)} disabled={matchBusy}>
-              <Text style={styles.closeLink}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={cartFor !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCartFor(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Share a cart</Text>
-            <Text style={styles.matchHelp}>
-              Pick who you're sharing a cart with — you'll be drawn into the same group.
-            </Text>
-            <ScrollView style={styles.opponentList}>
-              {cartMates.length === 0 ? (
-                <Text style={styles.rosterEmpty}>No one else is In yet.</Text>
-              ) : (
-                cartMates.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={styles.opponentRow}
-                    onPress={() => cartFor && addCart(cartFor, p.id)}
-                    disabled={cartBusy}
-                  >
-                    <Text style={styles.opponentName}>{p.name}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-            {cartBusy && <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />}
-            {error && cartFor && <Text style={styles.error}>⚠️ {error}</Text>}
-            <TouchableOpacity onPress={() => setCartFor(null)} disabled={cartBusy}>
               <Text style={styles.closeLink}>Cancel</Text>
             </TouchableOpacity>
           </View>

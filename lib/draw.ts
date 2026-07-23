@@ -138,23 +138,33 @@ export async function runDraw(weekId: string): Promise<void> {
     .map((r: { id: string }) => r.id)
     .filter((id: string) => !inSet.has(id));
 
-  // Matches and carts are the same constraint to the draw: keep the pair
-  // together. Union both sets of pairs.
   const { data: mt, error: e5 } = await supabase
     .from('matches')
     .select('player_a, player_b')
     .eq('week_id', weekId);
   if (e5) throw e5;
-  const { data: ct, error: e6 } = await supabase
-    .from('carts')
-    .select('player_a, player_b')
-    .eq('week_id', weekId);
-  if (e6) throw e6;
-  const pairs = [...(mt ?? []), ...(ct ?? [])].map(
-    (p: { player_a: string; player_b: string }) => [p.player_a, p.player_b] as [string, string]
+  const matchPairs = (mt ?? []).map(
+    (m: { player_a: string; player_b: string }) => [m.player_a, m.player_b] as [string, string]
   );
 
-  const plan = computeGroups(inIds, guestsByHost, blockerPool, pairs);
+  // Carts are a per-player flag: pair up the cart-holders (two share a group);
+  // an odd one out rides alone. To the draw a cart pair is the same
+  // keep-together constraint as a match.
+  const { data: ct, error: e6 } = await supabase
+    .from('carts')
+    .select('player_id')
+    .eq('week_id', weekId);
+  if (e6) throw e6;
+  const cartIds = (ct ?? [])
+    .map((c: { player_id: string }) => c.player_id)
+    .filter((id: string) => inSet.has(id));
+  const shuffledCarts = shuffle(cartIds);
+  const cartPairs: [string, string][] = [];
+  for (let i = 0; i + 1 < shuffledCarts.length; i += 2) {
+    cartPairs.push([shuffledCarts[i], shuffledCarts[i + 1]]);
+  }
+
+  const plan = computeGroups(inIds, guestsByHost, blockerPool, [...matchPairs, ...cartPairs]);
 
   const { error: e4 } = await supabase.rpc('apply_draw', {
     p_week_id: weekId,
