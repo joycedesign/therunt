@@ -238,10 +238,13 @@ export default function MembersScreen({ player }: { player: Player | null }) {
               <View style={styles.rowText}>
                 <Text style={styles.name}>
                   {m.preferred_name || m.name}
+                  <Text style={styles.numInline}>
+                    {m.membership_number ? `  ·  #${m.membership_number}` : '  ·  no number'}
+                  </Text>
                   {m.is_admin && <Text style={styles.adminBadge}>  admin</Text>}
                 </Text>
                 <Text style={styles.sub}>
-                  {m.membership_number ? `#${m.membership_number}` : 'no number'}
+                  {m.name}
                   {claimed ? '  ·  signed up' : ''}
                 </Text>
               </View>
@@ -429,6 +432,7 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, paddingRight: 12 },
   name: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
+  numInline: { color: '#9fc6b3', fontSize: 14, fontWeight: '400' },
   sub: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
   chevron: { color: '#7fffb0', fontSize: 22, fontWeight: '700' },
   adminBadge: { color: '#7fffb0', fontSize: 12, fontWeight: '700' },
