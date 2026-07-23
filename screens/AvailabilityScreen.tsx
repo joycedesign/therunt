@@ -35,7 +35,15 @@ type AvailMap = Record<string, boolean>;
 type RosterMap = Record<string, string[]>;
 type Guest = { id: string; name: string; hostName: string; host_player_id: string };
 type GuestsMap = Record<string, Guest[]>;
-type GroupEntry = { label: string; kind: 'member' | 'blocker' | 'guest' };
+// label = short name (booked view); fullName + memberNo shown in the draw
+// view so the Runt has the exact details needed to book (membership number,
+// or GA number for guests).
+type GroupEntry = {
+  label: string;
+  fullName: string;
+  memberNo: string | null;
+  kind: 'member' | 'blocker' | 'guest';
+};
 type DrawGroup = {
   id: string;
   name: string;
@@ -53,12 +61,13 @@ type MatchesMap = Record<string, Match[]>;
 type Cart = { id: string; playerId: string; name: string };
 type CartsMap = Record<string, Cart[]>;
 
-type NamePart = { preferred_name: string | null; name: string };
+type NamePart = { preferred_name: string | null; name: string; membership_number?: string | null };
 type RosterRow = { week_id: string; player_id: string; players: NamePart | NamePart[] | null };
 type GuestRow = {
   id: string;
   week_id: string;
   name: string;
+  ga_number: string | null;
   host_player_id: string;
   group_id: string | null;
   players: NamePart | NamePart[] | null;
@@ -211,7 +220,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     // Guests for each visible week (with host name + assigned group).
     const { data: gst, error: gErr } = await supabase
       .from('guests')
-      .select('id, week_id, name, host_player_id, group_id, players(preferred_name, name)')
+      .select('id, week_id, name, ga_number, host_player_id, group_id, players(preferred_name, name)')
       .in('week_id', weekIds);
     if (gErr) {
       setError(gErr.message);
@@ -228,7 +237,12 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         host_player_id: g.host_player_id,
       });
       if (g.group_id) {
-        (guestByGroup[g.group_id] ??= []).push({ label: g.name, kind: 'guest' });
+        (guestByGroup[g.group_id] ??= []).push({
+          label: g.name,
+          fullName: g.name,
+          memberNo: g.ga_number,
+          kind: 'guest',
+        });
       }
     });
     Object.values(gmap).forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
@@ -249,7 +263,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
     if (groupIds.length) {
       const { data: gm, error: gmErr } = await supabase
         .from('group_members')
-        .select('group_id, is_blocker, players(preferred_name, name)')
+        .select('group_id, is_blocker, players(preferred_name, name, membership_number)')
         .in('group_id', groupIds);
       if (gmErr) {
         setError(gmErr.message);
@@ -259,6 +273,8 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
         const p = Array.isArray(r.players) ? r.players[0] : r.players;
         (byGroup[r.group_id] ??= []).push({
           label: p?.preferred_name || p?.name || 'player',
+          fullName: p?.name || p?.preferred_name || 'player',
+          memberNo: p?.membership_number ?? null,
           kind: r.is_blocker ? 'blocker' : 'member',
         });
       });
@@ -604,7 +620,10 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                               )}
                               {grp.entries.map((e, i) => (
                                 <Text key={i} style={styles.rosterName}>
-                                  {i + 1}. {e.label}
+                                  {i + 1}. {booked ? e.label : e.fullName}
+                                  {!booked && e.memberNo != null && (
+                                    <Text style={styles.memberNo}> · {e.memberNo}</Text>
+                                  )}
                                   {e.kind === 'guest' && (
                                     <Text style={styles.guestTag}> (guest)</Text>
                                   )}
@@ -1022,6 +1041,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   guestTag: { color: '#9fc6b3', fontSize: 12, fontStyle: 'italic' },
+  memberNo: { color: '#7fffb0', fontSize: 13, fontWeight: '600' },
   remove: { color: '#ff9b9b', fontSize: 16, paddingHorizontal: 6 },
   rosterEmpty: { color: '#9fb0a8', fontSize: 13, fontStyle: 'italic' },
   addGuestBtn: { marginTop: 12, alignSelf: 'flex-start' },
