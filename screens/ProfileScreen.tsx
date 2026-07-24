@@ -3,7 +3,7 @@
 // The profile row was auto-created from your email on first sign-in;
 // here you set your display name / preferred name.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -28,9 +28,10 @@ type Props = {
   player: Player | null;
   email: string;
   onProfileSaved: () => void;
+  header?: ReactNode;
 };
 
-export default function ProfileScreen({ player, email, onProfileSaved }: Props) {
+export default function ProfileScreen({ player, email, onProfileSaved, header }: Props) {
   const [name, setName] = useState('');
   const [preferredName, setPreferredName] = useState('');
   const [membershipNumber, setMembershipNumber] = useState('');
@@ -154,6 +155,7 @@ export default function ProfileScreen({ player, email, onProfileSaved }: Props) 
       automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
     >
+      {header}
       <View style={styles.card}>
       <Text style={styles.label}>Your profile</Text>
       <Text style={styles.email}>Member #{membershipNumber || '—'}</Text>

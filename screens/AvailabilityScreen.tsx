@@ -4,7 +4,7 @@
 // In (availability table), shows the who's-in roster, and lets a member add
 // guests (guests table) — each guest takes a slot in the host's group.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -74,7 +74,13 @@ type GuestRow = {
 };
 type GmRow = { group_id: string; is_blocker: boolean; players: NamePart | NamePart[] | null };
 
-export default function AvailabilityScreen({ player }: { player: Player | null }) {
+export default function AvailabilityScreen({
+  player,
+  header,
+}: {
+  player: Player | null;
+  header?: ReactNode;
+}) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [weeks, setWeeks] = useState<Week[]>([]);
@@ -514,8 +520,9 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#7fffb0" size="large" />
+      <View style={styles.scroll}>
+        {header}
+        <ActivityIndicator color="#7fffb0" size="large" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -545,6 +552,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7fffb0" />
         }
       >
+        {header}
         <Text style={styles.heading}>Which Saturdays are you in?</Text>
 
         {error && !addingFor && <Text style={styles.error}>⚠️ {error}</Text>}
@@ -592,7 +600,7 @@ export default function AvailabilityScreen({ player }: { player: Player | null }
                 </View>
                 {isOpen && (
                   <View style={styles.rosterBox}>
-                    {w.booking_deadline && (
+                    {w.booking_deadline && drawn.length === 0 && (
                       <Text style={styles.deadline}>
                         Confirm by {formatDeadline(w.booking_deadline)}
                       </Text>

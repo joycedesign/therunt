@@ -4,7 +4,7 @@
 // to the app via email or a QR code. Members who have signed up ("claimed")
 // are read-only here — they manage their own profile.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -31,7 +31,13 @@ type Member = {
   is_admin: boolean;
 };
 
-export default function MembersScreen({ player }: { player: Player | null }) {
+export default function MembersScreen({
+  player,
+  header,
+}: {
+  player: Player | null;
+  header?: ReactNode;
+}) {
   const isAdmin = player?.is_admin ?? false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -193,8 +199,9 @@ export default function MembersScreen({ player }: { player: Player | null }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#7fffb0" size="large" />
+      <View style={styles.scroll}>
+        {header}
+        <ActivityIndicator color="#7fffb0" size="large" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -210,6 +217,7 @@ export default function MembersScreen({ player }: { player: Player | null }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7fffb0" />
         }
       >
+        {header}
         <View style={styles.headerRow}>
           <Text style={styles.heading}>Members ({members.length})</Text>
           <View style={styles.headerButtons}>

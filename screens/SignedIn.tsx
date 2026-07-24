@@ -21,35 +21,38 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
   const [tab, setTab] = useState<Tab>('availability');
   const greeting = player?.preferred_name || player?.name || 'golfer';
 
+  // Rendered as the leading content inside each tab's own scroll view, so the
+  // title, greeting, and tabs scroll away with the list instead of staying pinned.
+  const header = (
+    <>
+      <Text style={styles.title}>The Runt 🐐</Text>
+      <Text style={styles.subtitle}>Hi, {greeting}</Text>
+
+      <View style={styles.tabs}>
+        <TabButton
+          label="Availability"
+          active={tab === 'availability'}
+          onPress={() => setTab('availability')}
+        />
+        <TabButton label="Members" active={tab === 'members'} onPress={() => setTab('members')} />
+        <TabButton label="Profile" active={tab === 'profile'} onPress={() => setTab('profile')} />
+      </View>
+    </>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.inner}>
-        <Text style={styles.title}>The Runt 🐐</Text>
-        <Text style={styles.subtitle}>Hi, {greeting}</Text>
-
-        <View style={styles.tabs}>
-          <TabButton
-            label="Availability"
-            active={tab === 'availability'}
-            onPress={() => setTab('availability')}
-          />
-          <TabButton
-            label="Members"
-            active={tab === 'members'}
-            onPress={() => setTab('members')}
-          />
-          <TabButton
-            label="Profile"
-            active={tab === 'profile'}
-            onPress={() => setTab('profile')}
-          />
-        </View>
-
         <View style={styles.body}>
-          {tab === 'availability' && <AvailabilityScreen player={player} />}
-          {tab === 'members' && <MembersScreen player={player} />}
+          {tab === 'availability' && <AvailabilityScreen player={player} header={header} />}
+          {tab === 'members' && <MembersScreen player={player} header={header} />}
           {tab === 'profile' && (
-            <ProfileScreen player={player} email={email} onProfileSaved={refreshPlayer} />
+            <ProfileScreen
+              player={player}
+              email={email}
+              onProfileSaved={refreshPlayer}
+              header={header}
+            />
           )}
         </View>
 
