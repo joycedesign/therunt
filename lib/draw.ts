@@ -172,6 +172,9 @@ export async function runDraw(weekId: string): Promise<void> {
   });
   if (e4) throw e4;
 
+  // A fresh draw folds everyone available back in, so any reserve list is stale.
+  await supabase.from('reserves').delete().eq('week_id', weekId);
+
   await supabase.from('weeks').update({ status: 'draw_complete' }).eq('id', weekId);
 }
 
@@ -179,4 +182,5 @@ export async function resetDraw(weekId: string): Promise<void> {
   if (!supabase) throw new Error('No connection.');
   const { error } = await supabase.rpc('reset_draw', { p_week_id: weekId });
   if (error) throw error;
+  await supabase.from('reserves').delete().eq('week_id', weekId);
 }

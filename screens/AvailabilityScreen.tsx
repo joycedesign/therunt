@@ -60,6 +60,9 @@ type MatchesMap = Record<string, Match[]>;
 // A cart is a per-player flag: this player wants a cart this week.
 type Cart = { id: string; playerId: string; name: string };
 type CartsMap = Record<string, Cart[]>;
+// A reserve: someone who became available after the draw. Ordered by created_at.
+type Reserve = { id: string; playerId: string; name: string };
+type ReservesMap = Record<string, Reserve[]>;
 
 type NamePart = { preferred_name: string | null; name: string; membership_number?: string | null };
 type RosterRow = { week_id: string; player_id: string; players: NamePart | NamePart[] | null };
@@ -72,7 +75,12 @@ type GuestRow = {
   group_id: string | null;
   players: NamePart | NamePart[] | null;
 };
-type GmRow = { group_id: string; is_blocker: boolean; players: NamePart | NamePart[] | null };
+type GmRow = {
+  group_id: string;
+  player_id: string;
+  is_blocker: boolean;
+  players: NamePart | NamePart[] | null;
+};
 
 export default function AvailabilityScreen({
   player,
@@ -92,6 +100,9 @@ export default function AvailabilityScreen({
   const [inByWeek, setInByWeek] = useState<InByWeek>({});
   const [matches, setMatches] = useState<MatchesMap>({});
   const [carts, setCarts] = useState<CartsMap>({});
+  const [reserves, setReserves] = useState<ReservesMap>({});
+  // Player ids already placed in a group, per week (so a re-join goes to reserves).
+  const [grouped, setGrouped] = useState<Record<string, Set<string>>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -223,6 +234,26 @@ export default function AvailabilityScreen({
     });
     setCarts(cmap);
 
+    // Reserves per week, ordered by when they were added (the queue order).
+    const { data: rv, error: resErr } = await supabase
+      .from('reserves')
+      .select('id, week_id, player_id')
+      .in('week_id', weekIds)
+      .order('created_at');
+    if (resErr) {
+      setError(resErr.message);
+      return;
+    }
+    const resMap: ReservesMap = {};
+    ((rv ?? []) as { id: string; week_id: string; player_id: string }[]).forEach((r) => {
+      (resMap[r.week_id] ??= []).push({
+        id: r.id,
+        playerId: r.player_id,
+        name: nameById[r.player_id] ?? 'player',
+      });
+    });
+    setReserves(resMap);
+
     // Guests for each visible week (with host name + assigned group).
     const { data: gst, error: gErr } = await supabase
       .from('guests')
@@ -265,11 +296,14 @@ export default function AvailabilityScreen({
       return;
     }
     const groupIds = (grp ?? []).map((g: { id: string }) => g.id);
+    const weekOfGroup: Record<string, string> = {};
+    (grp ?? []).forEach((g: { id: string; week_id: string }) => (weekOfGroup[g.id] = g.week_id));
     const byGroup: Record<string, GroupEntry[]> = {};
+    const groupedIds: Record<string, Set<string>> = {};
     if (groupIds.length) {
       const { data: gm, error: gmErr } = await supabase
         .from('group_members')
-        .select('group_id, is_blocker, players(preferred_name, name, membership_number)')
+        .select('group_id, player_id, is_blocker, players(preferred_name, name, membership_number)')
         .in('group_id', groupIds);
       if (gmErr) {
         setError(gmErr.message);
@@ -283,8 +317,13 @@ export default function AvailabilityScreen({
           memberNo: p?.membership_number ?? null,
           kind: r.is_blocker ? 'blocker' : 'member',
         });
+        // Blockers are placeholders, not real players — if a blocker's member
+        // becomes available they should still land on the reserve list.
+        const wk = weekOfGroup[r.group_id];
+        if (wk && !r.is_blocker) (groupedIds[wk] ??= new Set()).add(r.player_id);
       });
     }
+    setGrouped(groupedIds);
     const grmap: GroupsMap = {};
     (grp ?? []).forEach(
       (g: {
@@ -350,6 +389,11 @@ export default function AvailabilityScreen({
         { event: '*', schema: 'public', table: 'carts' },
         () => void load()
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reserves' },
+        () => void load()
+      )
       .subscribe();
     return () => {
       void client.removeChannel(channel);
@@ -384,6 +428,26 @@ export default function AvailabilityScreen({
     if (error) {
       setError(error.message);
       setAvail((prev) => ({ ...prev, [weekId]: previous ?? false })); // revert
+      return;
+    }
+
+    // If the week is already drawn, becoming available lands you on the reserve
+    // list (unless you're already in a group); going unavailable takes you off it.
+    const drawn = (drawGroups[weekId]?.length ?? 0) > 0;
+    if (drawn) {
+      if (value) {
+        if (!grouped[weekId]?.has(player.id)) {
+          await supabase
+            .from('reserves')
+            .upsert(
+              { week_id: weekId, player_id: player.id },
+              { onConflict: 'week_id,player_id', ignoreDuplicates: true }
+            );
+        }
+      } else {
+        await supabase.from('reserves').delete().eq('week_id', weekId).eq('player_id', player.id);
+      }
+      void load();
     }
   }
 
@@ -465,6 +529,13 @@ export default function AvailabilityScreen({
   async function removeCart(id: string) {
     if (!supabase) return;
     const { error } = await supabase.from('carts').delete().eq('id', id);
+    if (error) setError(error.message);
+    else void load();
+  }
+
+  async function removeReserve(id: string) {
+    if (!supabase) return;
+    const { error } = await supabase.from('reserves').delete().eq('id', id);
     if (error) setError(error.message);
     else void load();
   }
@@ -569,6 +640,7 @@ export default function AvailabilityScreen({
             const drawn = drawGroups[w.id] ?? [];
             const matchArr = matches[w.id] ?? [];
             const cartArr = carts[w.id] ?? [];
+            const reserveArr = reserves[w.id] ?? [];
             const isIn = avail[w.id] ?? false;
             const busy = drawBusy === w.id;
             const isOpen = expanded.has(w.id);
@@ -708,6 +780,23 @@ export default function AvailabilityScreen({
                                 />{' '}
                                 {c.name}
                               </Text>
+                            ))}
+                          </View>
+                        )}
+                        {reserveArr.length > 0 && (
+                          <View style={styles.reserveBox}>
+                            <Text style={styles.reserveTitle}>Reserves</Text>
+                            {reserveArr.map((r, i) => (
+                              <View key={r.id} style={styles.guestRow}>
+                                <Text style={styles.rosterName}>
+                                  {i + 1}. {r.name}
+                                </Text>
+                                {(isAdmin || r.playerId === player?.id) && (
+                                  <TouchableOpacity onPress={() => removeReserve(r.id)} hitSlop={8}>
+                                    <Text style={styles.remove}>✕</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
                             ))}
                           </View>
                         )}
@@ -1092,6 +1181,13 @@ const styles = StyleSheet.create({
   },
   bookBtnText: { color: '#7fffb0', fontSize: 14, fontWeight: '600' },
   bookSummary: { color: '#9fc6b3', fontSize: 12, marginTop: 4 },
+  reserveBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  reserveTitle: { color: '#7fffb0', fontSize: 13, fontWeight: '700', marginBottom: 4 },
   bookedBadge: { color: '#7fffb0', fontSize: 12, fontWeight: '700' },
   actionLinks: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   matchList: { marginTop: 10 },

@@ -23,7 +23,8 @@ type NamePart = { preferred_name: string | null; name: string };
 type Member = { gmId: string; playerId: string; name: string; isBlocker: boolean };
 type Guest = { id: string; name: string };
 type Group = { id: string; name: string; members: Member[]; guests: Guest[] };
-type Ungrouped = { playerId: string; name: string };
+type Ungrouped = { playerId: string; name: string; isReserve: boolean };
+type Reserve = { id: string; playerId: string; name: string };
 
 function nameOf(p: NamePart | NamePart[] | null): string {
   const x = Array.isArray(p) ? p[0] : p;
@@ -41,6 +42,7 @@ export default function GroupEditor({
 }) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [candidates, setCandidates] = useState<Ungrouped[]>([]);
+  const [reserves, setReserves] = useState<Reserve[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +107,26 @@ export default function GroupEditor({
       }))
     );
 
+    // Reserves for this week (people who became available after the draw),
+    // in queue order.
+    const { data: rv } = await supabase
+      .from('reserves')
+      .select('id, player_id, players(preferred_name, name)')
+      .eq('week_id', weekId)
+      .order('created_at');
+    const reserveIds = new Set<string>();
+    const reserveList: Reserve[] = (
+      (rv ?? []) as {
+        id: string;
+        player_id: string;
+        players: NamePart | NamePart[] | null;
+      }[]
+    ).map((r) => {
+      reserveIds.add(r.player_id);
+      return { id: r.id, playerId: r.player_id, name: nameOf(r.players) };
+    });
+    setReserves(reserveList);
+
     // Anyone (active member) not already in a group this week can be added.
     const { data: allP } = await supabase
       .from('players')
@@ -118,6 +140,7 @@ export default function GroupEditor({
         .map((p: { id: string; preferred_name: string | null; name: string }) => ({
           playerId: p.id,
           name: nameOf(p),
+          isReserve: reserveIds.has(p.id),
         }))
     );
   }, [weekId]);
@@ -150,6 +173,11 @@ export default function GroupEditor({
     await supabase.from('guests').delete().eq('id', guestId);
   }
 
+  async function removeReserve(reserveId: string) {
+    if (!supabase) return;
+    await supabase.from('reserves').delete().eq('id', reserveId);
+  }
+
   async function addMember(groupId: string, playerId: string, isBlocker: boolean) {
     if (!supabase) return;
     const g = groups.find((x) => x.id === groupId);
@@ -157,6 +185,8 @@ export default function GroupEditor({
     await supabase
       .from('group_members')
       .insert({ group_id: groupId, player_id: playerId, is_blocker: isBlocker, position: pos });
+    // Placing a reserve into a group takes them off the reserve list.
+    await supabase.from('reserves').delete().eq('week_id', weekId).eq('player_id', playerId);
   }
 
   async function addGuest(groupId: string, name: string, ga: string) {
@@ -233,6 +263,25 @@ export default function GroupEditor({
               ))}
             </View>
           ))}
+
+          {reserves.length > 0 && (
+            <View style={styles.group}>
+              <Text style={styles.groupName}>Reserves</Text>
+              <Text style={styles.reserveHint}>
+                Remove a blocker with ✕, then use a group&apos;s + Add to bring a reserve in.
+              </Text>
+              {reserves.map((r, i) => (
+                <View key={r.id} style={styles.row}>
+                  <Text style={styles.name}>
+                    {i + 1}. {r.name}
+                  </Text>
+                  <TouchableOpacity onPress={() => run(() => removeReserve(r.id))} hitSlop={8}>
+                    <Text style={styles.remove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
 
         {addFor !== null && (
@@ -257,7 +306,10 @@ export default function GroupEditor({
                           if (gid) run(() => addMember(gid, u.playerId, blk));
                         }}
                       >
-                        <Text style={styles.pickName}>{u.name}</Text>
+                        <Text style={styles.pickName}>
+                          {u.name}
+                          {u.isReserve && <Text style={styles.reserveTag}> (reserve)</Text>}
+                        </Text>
                       </TouchableOpacity>
                     ))
                   )}
@@ -354,6 +406,8 @@ const styles = StyleSheet.create({
   },
   name: { color: '#ffffff', fontSize: 15, flex: 1, paddingRight: 12 },
   guestTag: { color: '#9fc6b3', fontSize: 12, fontStyle: 'italic' },
+  reserveTag: { color: '#7fffb0', fontSize: 12, fontStyle: 'italic' },
+  reserveHint: { color: '#9fc6b3', fontSize: 12, marginBottom: 8 },
   remove: { color: '#ff9b9b', fontSize: 16, paddingHorizontal: 6 },
   ung: { color: '#dff3e8', fontSize: 15, paddingVertical: 6 },
   overlay: {
