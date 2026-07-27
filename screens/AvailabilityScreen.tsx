@@ -21,6 +21,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { runDraw, resetDraw } from '../lib/draw';
 import { bookGroup, unbookGroup } from '../lib/booking';
+import { logChange } from '../lib/changelog';
 import TeeTimeModal from '../components/TeeTimeModal';
 import GroupEditor from './GroupEditor';
 import type { Player } from '../lib/useAuth';
@@ -63,6 +64,7 @@ type CartsMap = Record<string, Cart[]>;
 // A reserve: someone who became available after the draw. Ordered by created_at.
 type Reserve = { id: string; playerId: string; name: string };
 type ReservesMap = Record<string, Reserve[]>;
+type LogEntry = { id: string; created_at: string; action: string; author_name: string };
 
 type NamePart = { preferred_name: string | null; name: string; membership_number?: string | null };
 type RosterRow = { week_id: string; player_id: string; players: NamePart | NamePart[] | null };
@@ -103,6 +105,8 @@ export default function AvailabilityScreen({
   const [reserves, setReserves] = useState<ReservesMap>({});
   // Player ids already placed in a group, per week (so a re-join goes to reserves).
   const [grouped, setGrouped] = useState<Record<string, Set<string>>>({});
+  // Player ids currently holding a slot as a blocker (dropped out), per week.
+  const [blockers, setBlockers] = useState<Record<string, Set<string>>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +118,11 @@ export default function AvailabilityScreen({
   const [cartBusy, setCartBusy] = useState(false);
 
   const [editorWeekId, setEditorWeekId] = useState<string | null>(null);
+
+  // Change-log modal state.
+  const [logForWeek, setLogForWeek] = useState<string | null>(null);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
 
   // Tee-time picker state.
   const [pickerGroup, setPickerGroup] = useState<{
@@ -300,6 +309,7 @@ export default function AvailabilityScreen({
     (grp ?? []).forEach((g: { id: string; week_id: string }) => (weekOfGroup[g.id] = g.week_id));
     const byGroup: Record<string, GroupEntry[]> = {};
     const groupedIds: Record<string, Set<string>> = {};
+    const blockerIds: Record<string, Set<string>> = {};
     if (groupIds.length) {
       const { data: gm, error: gmErr } = await supabase
         .from('group_members')
@@ -318,12 +328,16 @@ export default function AvailabilityScreen({
           kind: r.is_blocker ? 'blocker' : 'member',
         });
         // Blockers are placeholders, not real players — if a blocker's member
-        // becomes available they should still land on the reserve list.
+        // becomes available they should reclaim their slot, not land on reserves.
         const wk = weekOfGroup[r.group_id];
-        if (wk && !r.is_blocker) (groupedIds[wk] ??= new Set()).add(r.player_id);
+        if (wk) {
+          if (r.is_blocker) (blockerIds[wk] ??= new Set()).add(r.player_id);
+          else (groupedIds[wk] ??= new Set()).add(r.player_id);
+        }
       });
     }
     setGrouped(groupedIds);
+    setBlockers(blockerIds);
     const grmap: GroupsMap = {};
     (grp ?? []).forEach(
       (g: {
@@ -431,24 +445,38 @@ export default function AvailabilityScreen({
       return;
     }
 
-    // If the week is already drawn, becoming available lands you on the reserve
-    // list (unless you're already in a group); going unavailable takes you off it.
+    // Availability changes after the draw need extra handling to keep the
+    // groups and reserve list consistent.
     const drawn = (drawGroups[weekId]?.length ?? 0) > 0;
-    if (drawn) {
-      if (value) {
-        if (!grouped[weekId]?.has(player.id)) {
-          await supabase
-            .from('reserves')
-            .upsert(
-              { week_id: weekId, player_id: player.id },
-              { onConflict: 'week_id,player_id', ignoreDuplicates: true }
-            );
-        }
-      } else {
-        await supabase.from('reserves').delete().eq('week_id', weekId).eq('player_id', player.id);
+    if (!drawn) return;
+
+    const isMember = grouped[weekId]?.has(player.id) ?? false;
+    const isBlocker = blockers[weekId]?.has(player.id) ?? false;
+    const who = player.preferred_name || player.name || 'A player';
+
+    if (!value) {
+      // Going unavailable. If you're a playing member, hold your slot by
+      // becoming a blocker; either way, drop off any reserve list.
+      if (isMember) {
+        await supabase.rpc('set_own_group_blocker', { p_week_id: weekId, p_blocker: true });
+        await logChange(weekId, `${who} dropped out — slot held by a blocker`, player);
       }
-      void load();
+      await supabase.from('reserves').delete().eq('week_id', weekId).eq('player_id', player.id);
+    } else if (isBlocker) {
+      // Rejoining and you still hold your slot as a blocker → reclaim it.
+      await supabase.rpc('set_own_group_blocker', { p_week_id: weekId, p_blocker: false });
+      await logChange(weekId, `${who} rejoined and reclaimed their group slot`, player);
+    } else if (!isMember) {
+      // Newly available after the draw with no slot → join the reserve list.
+      await supabase
+        .from('reserves')
+        .upsert(
+          { week_id: weekId, player_id: player.id },
+          { onConflict: 'week_id,player_id', ignoreDuplicates: true }
+        );
+      await logChange(weekId, `${who} joined the reserve list`, player);
     }
+    void load();
   }
 
   async function addGuest() {
@@ -540,11 +568,23 @@ export default function AvailabilityScreen({
     else void load();
   }
 
+  function groupName(weekId: string, groupId: string): string {
+    return (drawGroups[weekId] ?? []).find((g) => g.id === groupId)?.name ?? 'a group';
+  }
+
   async function confirmTee(d: Date, tee: number) {
     if (!pickerGroup) return;
+    const pg = pickerGroup;
     setError(null);
     try {
-      await bookGroup(pickerGroup.groupId, pickerGroup.weekId, d.toISOString(), tee);
+      await bookGroup(pg.groupId, pg.weekId, d.toISOString(), tee);
+      await logChange(
+        pg.weekId,
+        `Booked ${groupName(pg.weekId, pg.groupId)} — ${formatTeeTime(d.toISOString())}, ${
+          tee === 11 ? '11th' : '1st'
+        } tee`,
+        player
+      );
       setPickerGroup(null);
       await load();
     } catch (e) {
@@ -557,6 +597,7 @@ export default function AvailabilityScreen({
     setError(null);
     try {
       await unbookGroup(groupId, weekId);
+      await logChange(weekId, `Unbooked ${groupName(weekId, groupId)}`, player);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -567,7 +608,9 @@ export default function AvailabilityScreen({
     setDrawBusy(weekId);
     setError(null);
     try {
+      const first = (drawGroups[weekId]?.length ?? 0) === 0;
       await runDraw(weekId);
+      await logChange(weekId, first ? 'Randomised the groups' : 'Re-randomised the groups', player);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -576,11 +619,26 @@ export default function AvailabilityScreen({
     }
   }
 
+  async function openLog(weekId: string) {
+    if (!supabase) return;
+    setLogForWeek(weekId);
+    setLogEntries([]);
+    setLogLoading(true);
+    const { data } = await supabase
+      .from('change_log')
+      .select('id, created_at, action, author_name')
+      .eq('week_id', weekId)
+      .order('created_at', { ascending: false });
+    setLogEntries((data ?? []) as LogEntry[]);
+    setLogLoading(false);
+  }
+
   async function reset(weekId: string) {
     setDrawBusy(weekId);
     setError(null);
     try {
       await resetDraw(weekId);
+      await logChange(weekId, 'Reset the draw', player);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -812,6 +870,9 @@ export default function AvailabilityScreen({
                                 <TouchableOpacity onPress={() => setEditorWeekId(w.id)}>
                                   <Text style={styles.addGuestText}>Edit groups</Text>
                                 </TouchableOpacity>
+                                <TouchableOpacity onPress={() => openLog(w.id)}>
+                                  <Text style={styles.addGuestText}>Log</Text>
+                                </TouchableOpacity>
                               </View>
                               <TouchableOpacity onPress={() => reset(w.id)}>
                                 <Text style={styles.resetLink}>Reset</Text>
@@ -1033,6 +1094,38 @@ export default function AvailabilityScreen({
         </View>
       </Modal>
 
+      <Modal
+        visible={logForWeek !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogForWeek(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Change log</Text>
+            {logLoading ? (
+              <ActivityIndicator color="#7fffb0" style={styles.drawSpinner} />
+            ) : logEntries.length === 0 ? (
+              <Text style={styles.rosterEmpty}>No changes recorded yet.</Text>
+            ) : (
+              <ScrollView style={styles.logList}>
+                {logEntries.map((e) => (
+                  <View key={e.id} style={styles.logRow}>
+                    <Text style={styles.logAction}>{e.action}</Text>
+                    <Text style={styles.logMeta}>
+                      {formatLogTime(e.created_at)} · {e.author_name}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <TouchableOpacity onPress={() => setLogForWeek(null)}>
+              <Text style={styles.closeLink}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <TeeTimeModal
         visible={pickerGroup !== null}
         initial={
@@ -1102,6 +1195,12 @@ function formatTime(d: Date): string {
   h = h % 12 || 12;
   const m = d.getMinutes();
   return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
+}
+
+function formatLogTime(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  return `${date}, ${formatTime(d)}`;
 }
 
 const styles = StyleSheet.create({
@@ -1188,6 +1287,14 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.12)',
   },
   reserveTitle: { color: '#7fffb0', fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  logList: { maxHeight: 320, marginBottom: 8 },
+  logRow: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  logAction: { color: '#ffffff', fontSize: 14 },
+  logMeta: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
   bookedBadge: { color: '#7fffb0', fontSize: 12, fontWeight: '700' },
   actionLinks: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   matchList: { marginTop: 10 },

@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { logChange } from '../lib/changelog';
 import type { Player } from '../lib/useAuth';
 
 type NamePart = { preferred_name: string | null; name: string };
@@ -163,22 +164,32 @@ export default function GroupEditor({
     }
   }
 
+  const nameOfGroup = (groupId: string) => groups.find((x) => x.id === groupId)?.name ?? 'a group';
+
   async function removeMember(gmId: string) {
     if (!supabase) return;
+    const g = groups.find((x) => x.members.some((m) => m.gmId === gmId));
+    const m = g?.members.find((x) => x.gmId === gmId);
     await supabase.from('group_members').delete().eq('id', gmId);
+    await logChange(weekId, `Removed ${m?.name ?? 'a player'} from ${g?.name ?? 'a group'}`, player);
   }
 
   async function removeGuest(guestId: string) {
     if (!supabase) return;
+    const g = groups.find((x) => x.guests.some((gu) => gu.id === guestId));
+    const gu = g?.guests.find((x) => x.id === guestId);
     await supabase.from('guests').delete().eq('id', guestId);
+    await logChange(weekId, `Removed guest ${gu?.name ?? ''} from ${g?.name ?? 'a group'}`, player);
   }
 
   async function removeReserve(reserveId: string) {
     if (!supabase) return;
+    const r = reserves.find((x) => x.id === reserveId);
     await supabase.from('reserves').delete().eq('id', reserveId);
+    await logChange(weekId, `Removed ${r?.name ?? 'a player'} from reserves`, player);
   }
 
-  async function addMember(groupId: string, playerId: string, isBlocker: boolean) {
+  async function addMember(groupId: string, playerId: string, isBlocker: boolean, name: string) {
     if (!supabase) return;
     const g = groups.find((x) => x.id === groupId);
     const pos = g ? g.members.length : 0;
@@ -187,6 +198,11 @@ export default function GroupEditor({
       .insert({ group_id: groupId, player_id: playerId, is_blocker: isBlocker, position: pos });
     // Placing a reserve into a group takes them off the reserve list.
     await supabase.from('reserves').delete().eq('week_id', weekId).eq('player_id', playerId);
+    await logChange(
+      weekId,
+      `Added ${name}${isBlocker ? ' as a blocker' : ''} to ${nameOfGroup(groupId)}`,
+      player
+    );
   }
 
   async function addGuest(groupId: string, name: string, ga: string) {
@@ -199,6 +215,7 @@ export default function GroupEditor({
       ga_number: ga.trim() || null,
       source: 'manual',
     });
+    await logChange(weekId, `Added guest ${name.trim()} to ${nameOfGroup(groupId)}`, player);
   }
 
   function openAdd(groupId: string) {
@@ -303,7 +320,7 @@ export default function GroupEditor({
                           const gid = addFor;
                           const blk = addAsBlocker;
                           setAddFor(null);
-                          if (gid) run(() => addMember(gid, u.playerId, blk));
+                          if (gid) run(() => addMember(gid, u.playerId, blk, u.name));
                         }}
                       >
                         <Text style={styles.pickName}>
