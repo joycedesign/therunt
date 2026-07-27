@@ -31,10 +31,22 @@ type Week = {
   start_date: string;
   booking_deadline: string | null;
   status: string;
+  title: string | null;
+  event_type: 'golf' | 'other' | null;
+  allow_plus_one: boolean;
+  allow_guests: boolean;
+  event_time: string | null;
+  emoji: string | null;
 };
 type AvailMap = Record<string, boolean>;
 type RosterMap = Record<string, string[]>;
-type Guest = { id: string; name: string; hostName: string; host_player_id: string };
+type Guest = {
+  id: string;
+  name: string;
+  hostName: string;
+  host_player_id: string;
+  isPlusOne: boolean;
+};
 type GuestsMap = Record<string, Guest[]>;
 // label = short name (booked view); fullName + memberNo shown in the draw
 // view so the Runt has the exact details needed to book (membership number,
@@ -75,6 +87,7 @@ type GuestRow = {
   ga_number: string | null;
   host_player_id: string;
   group_id: string | null;
+  is_plus_one: boolean;
   players: NamePart | NamePart[] | null;
 };
 type GmRow = {
@@ -133,11 +146,12 @@ export default function AvailabilityScreen({
     startingTee: number | null;
   } | null>(null);
 
-  // Add-guest modal state.
+  // Add-guest / +1 modal state.
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
   const [guestGa, setGuestGa] = useState('');
   const [guestBusy, setGuestBusy] = useState(false);
+  const [addNoGa, setAddNoGa] = useState(false); // hide GA field (non-golf events)
 
   const load = useCallback(async () => {
     if (!supabase || !player) return;
@@ -145,7 +159,9 @@ export default function AvailabilityScreen({
     const today = new Date().toISOString().slice(0, 10);
     const { data: wk, error: wErr } = await supabase
       .from('weeks')
-      .select('id, start_date, booking_deadline, status')
+      .select(
+        'id, start_date, booking_deadline, status, title, event_type, allow_plus_one, allow_guests, event_time, emoji'
+      )
       .gte('start_date', today)
       .order('start_date')
       .limit(8);
@@ -266,7 +282,9 @@ export default function AvailabilityScreen({
     // Guests for each visible week (with host name + assigned group).
     const { data: gst, error: gErr } = await supabase
       .from('guests')
-      .select('id, week_id, name, ga_number, host_player_id, group_id, players(preferred_name, name)')
+      .select(
+        'id, week_id, name, ga_number, host_player_id, group_id, is_plus_one, players(preferred_name, name)'
+      )
       .in('week_id', weekIds);
     if (gErr) {
       setError(gErr.message);
@@ -281,6 +299,7 @@ export default function AvailabilityScreen({
         name: g.name,
         hostName: h?.preferred_name || h?.name || 'member',
         host_player_id: g.host_player_id,
+        isPlusOne: g.is_plus_one ?? false,
       });
       if (g.group_id) {
         (guestByGroup[g.group_id] ??= []).push({
@@ -492,7 +511,7 @@ export default function AvailabilityScreen({
       week_id: addingFor,
       host_player_id: player.id,
       name: nm,
-      ga_number: guestGa.trim() || null,
+      ga_number: addNoGa ? null : guestGa.trim() || null,
       source: 'manual',
     });
     setGuestBusy(false);
@@ -702,16 +721,25 @@ export default function AvailabilityScreen({
             const isIn = avail[w.id] ?? false;
             const busy = drawBusy === w.id;
             const isOpen = expanded.has(w.id);
+            const isNonGolf = w.event_type === 'other';
             return (
-              <View key={w.id} style={styles.card}>
+              <View key={w.id} style={[styles.card, isNonGolf && styles.eventCard]}>
                 <View style={styles.row}>
                   <TouchableOpacity
                     style={styles.rowText}
                     onPress={() => toggleExpand(w.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.date}>{formatSaturday(w.start_date)}</Text>
+                    <Text style={styles.date}>
+                      {isNonGolf && w.emoji ? `${w.emoji} ` : ''}
+                      {w.title || formatSaturday(w.start_date)}
+                    </Text>
                     <Text style={styles.count}>
+                      {w.event_type
+                        ? `${formatSaturday(w.start_date)}${
+                            w.event_time ? `, ${formatClock(w.event_time)}` : ''
+                          } · `
+                        : ''}
                       {total} in {isOpen ? '▲' : '▼'}
                       {w.status === 'booked' && (
                         <Text style={styles.bookedBadge}>  ✅ booked</Text>
@@ -736,7 +764,49 @@ export default function AvailabilityScreen({
                       </Text>
                     )}
 
-                    {drawn.length > 0 ? (
+                    {isNonGolf ? (
+                      <>
+                        {total === 0 ? (
+                          <Text style={styles.rosterEmpty}>No one in yet.</Text>
+                        ) : (
+                          <>
+                            {inList.map((nm, i) => (
+                              <Text key={`nm-${i}`} style={styles.rosterName}>
+                                {i + 1}. {nm}
+                              </Text>
+                            ))}
+                            {guestArr.map((g, j) => (
+                              <View key={g.id} style={styles.guestRow}>
+                                <Text style={styles.rosterName}>
+                                  {inList.length + j + 1}. {g.name}{' '}
+                                  <Text style={styles.guestTag}>(guest of {g.hostName})</Text>
+                                </Text>
+                                {g.host_player_id === player?.id && (
+                                  <TouchableOpacity onPress={() => removeGuest(g.id)} hitSlop={8}>
+                                    <Text style={styles.remove}>✕</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            ))}
+                          </>
+                        )}
+                        {isIn && w.allow_guests && (
+                          <View style={styles.actionLinks}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setAddingFor(w.id);
+                                setGuestName('');
+                                setGuestGa('');
+                                setAddNoGa(true);
+                                setError(null);
+                              }}
+                            >
+                              <Text style={styles.addGuestText}>+ Add guest</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </>
+                    ) : drawn.length > 0 ? (
                       <>
                         <View style={w.status === 'booked' ? styles.groupGrid : undefined}>
                           {drawn.map((grp) => {
@@ -967,6 +1037,7 @@ export default function AvailabilityScreen({
                                     setAddingFor(w.id);
                                     setGuestName('');
                                     setGuestGa('');
+                                    setAddNoGa(false);
                                     setError(null);
                                   }}
                                 >
@@ -1027,15 +1098,17 @@ export default function AvailabilityScreen({
               editable={!guestBusy}
               autoFocus
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Golf Australia number (optional)"
-              placeholderTextColor="#7fa392"
-              keyboardType="number-pad"
-              value={guestGa}
-              onChangeText={setGuestGa}
-              editable={!guestBusy}
-            />
+            {!addNoGa && (
+              <TextInput
+                style={styles.input}
+                placeholder="Golf Australia number (optional)"
+                placeholderTextColor="#7fa392"
+                keyboardType="number-pad"
+                value={guestGa}
+                onChangeText={setGuestGa}
+                editable={!guestBusy}
+              />
+            )}
             {error && addingFor && <Text style={styles.error}>⚠️ {error}</Text>}
             <View style={styles.modalButtons}>
               <TouchableOpacity onPress={() => setAddingFor(null)} disabled={guestBusy}>
@@ -1197,6 +1270,14 @@ function formatTime(d: Date): string {
   return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
+function formatClock(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h)) return t;
+  const ampm = h >= 12 ? 'pm' : 'am';
+  const hr = h % 12 || 12;
+  return m === 0 ? `${hr}${ampm}` : `${hr}:${String(m).padStart(2, '0')}${ampm}`;
+}
+
 function formatLogTime(iso: string): string {
   const d = new Date(iso);
   const date = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
@@ -1214,6 +1295,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 10,
+  },
+  // Non-golf events keep the normal card background but get a green border.
+  eventCard: {
+    borderWidth: 1,
+    borderColor: '#7fffb0',
   },
   row: {
     flexDirection: 'row',

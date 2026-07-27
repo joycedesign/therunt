@@ -8,8 +8,9 @@ import type { Player } from '../lib/useAuth';
 import AvailabilityScreen from './AvailabilityScreen';
 import MembersScreen from './MembersScreen';
 import ProfileScreen from './ProfileScreen';
+import AdminScreen from './AdminScreen';
 
-type Tab = 'availability' | 'members' | 'profile';
+type Tab = 'availability' | 'members' | 'profile' | 'admin';
 
 type Props = {
   player: Player | null;
@@ -20,6 +21,7 @@ type Props = {
 export default function SignedIn({ player, email, refreshPlayer }: Props) {
   const [tab, setTab] = useState<Tab>('availability');
   const greeting = player?.preferred_name || player?.name || 'golfer';
+  const isAdmin = player?.is_admin ?? false;
 
   // Rendered as the leading content inside each tab's own scroll view, so the
   // title, greeting, and tabs scroll away with the list instead of staying pinned.
@@ -36,6 +38,9 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
         />
         <TabButton label="Members" active={tab === 'members'} onPress={() => setTab('members')} />
         <TabButton label="Profile" active={tab === 'profile'} onPress={() => setTab('profile')} />
+        {isAdmin && (
+          <TabButton label="Admin" active={tab === 'admin'} onPress={() => setTab('admin')} />
+        )}
       </View>
     </>
   );
@@ -54,6 +59,7 @@ export default function SignedIn({ player, email, refreshPlayer }: Props) {
               header={header}
             />
           )}
+          {tab === 'admin' && isAdmin && <AdminScreen player={player} header={header} />}
         </View>
 
         <TouchableOpacity onPress={() => supabase?.auth.signOut()}>
