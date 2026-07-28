@@ -20,9 +20,9 @@ overall build order.
 
 ### 2. Who's-in roster + the draw (ties into Phase 3)
 - **Tap a Saturday row to expand** the list of members registered as playing.
-- **Before 4:05pm, 8 days before the playing date:** show a flat,
+- **Before 4:02pm, 8 days before the playing date:** show a flat,
   **non-grouped** list of who's in.
-- **At 4:05pm, 8 days before:** the list is **randomly drawn into groups of 2,
+- **At 4:02pm, 8 days before:** the list is **randomly drawn into groups of 2,
   3, or 4** depending on numbers.
 - **Blockers** (reinstated — see conflict below): groups that fall short of 4
   are padded with "blockers" drawn from players **not** playing that day:
@@ -64,7 +64,7 @@ overall build order.
 - Build this once the rest of the app is mostly finished.
 
 ## Decisions (folded into CLAUDE.md)
-- **Draw timing:** **4:05pm, 8 days before** the Saturday (5 min after the 4pm
+- **Draw timing:** **4:02pm, 8 days before** the Saturday (2 min after the 4pm
   confirm deadline that shipped in Phase 2). Supersedes the old "Friday 6pm".
 - **Blockers:** reinstated as **placeholder names only** — they hold booking
   slots so strangers can't join a short group; they do **not** play. Tracked via
