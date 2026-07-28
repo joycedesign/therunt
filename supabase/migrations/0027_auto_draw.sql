@@ -1,6 +1,6 @@
--- The Runt — automatic draw (Phase 3, final): pg_cron runs the draw at 4:02pm,
--- 8 days before each Saturday (2 minutes after the 4pm confirm deadline).
--- Run once in the Supabase SQL Editor.
+-- The Runt — automatic draw (Phase 3, final): pg_cron runs the draw at 4:05pm,
+-- 8 days before each Saturday (5 minutes after the 4pm confirm deadline).
+-- Run once in the Supabase SQL Editor. Idempotent — safe to re-run.
 --
 -- This is a plpgsql port of lib/draw.ts computeGroups(): cluster players who
 -- must stay together (matches + cart pairs + a host's guests) with union-find,
@@ -232,7 +232,7 @@ begin
 end;
 $$;
 
--- 3. Cron entry point: draw every pending week whose 4:02pm draw time has passed.
+-- 3. Cron entry point: draw every pending week whose 4:05pm draw time has passed.
 create or replace function auto_draw()
 returns void
 language plpgsql
@@ -246,7 +246,7 @@ begin
     select id from weeks
     where status = 'pending'
       and booking_deadline is not null
-      and now() >= booking_deadline + interval '2 minutes'
+      and now() >= booking_deadline + interval '5 minutes'
       and start_date >= current_date
       and (event_type is null or event_type = 'golf')
       and exists (select 1 from availability a where a.week_id = weeks.id and a.is_available)
@@ -260,7 +260,8 @@ begin
 end;
 $$;
 
--- 4. Schedule it every minute (a no-op until a week's draw time arrives).
+-- 4. Schedule it every 5 minutes (a no-op until a week's draw time arrives).
+--    With the +5min threshold above, the first tick at/after 4:05pm draws.
 --    booking_deadline is an absolute timestamptz, so this is DST-safe.
 select cron.unschedule(jobid) from cron.job where jobname = 'runt-auto-draw';
-select cron.schedule('runt-auto-draw', '* * * * *', $$select public.auto_draw();$$);
+select cron.schedule('runt-auto-draw', '*/5 * * * *', $$select public.auto_draw();$$);

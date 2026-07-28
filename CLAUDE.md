@@ -16,7 +16,7 @@ times manually, then scrape results to crown each week's "Runt".
 1. Players nominate which upcoming Saturdays they're available. Members may also
    invite **guests** (non-registered members or non-members); each guest takes a
    slot in their host's group.
-2. **Confirm deadline 4pm, 8 days before the Saturday.** At **4:02pm** that day a
+2. **Confirm deadline 4pm, 8 days before the Saturday.** At **4:05pm** that day a
    scheduled job randomly sorts available players into groups of **4, dropping to
    3 or 2 when the numbers require**. Short groups are padded to a full 4-ball
    with **blockers** — placeholder names drawn from players *not* playing that day
@@ -41,8 +41,8 @@ times manually, then scrape results to crown each week's "Runt".
    sync, member import/invite — see [docs/BACKLOG.md](docs/BACKLOG.md)).
 3. **Random draw** — groups of 2–4, short groups padded with blockers; guests
    stay with their host. ✅ *done*: manual **Randomize/Reset**, plus auto-run at
-   **4:02pm** (8 days before) via pg_cron (migration 0027) — a plpgsql port of
-   `lib/draw.ts` scheduled every minute, drawing any pending week past its time.
+   **4:05pm** (8 days before) via pg_cron (migration 0027) — a plpgsql port of
+   `lib/draw.ts` scheduled every 5 min, drawing any pending week past its time.
 4. **Results + Runt** — scrape MiScore, set winner/loser, assign next Runt,
    leaderboard/stats.
 5. **Manual booking** — Runt records tee times and marks groups booked → **ship v1**.
@@ -91,7 +91,7 @@ Row-level security (RLS) will be enabled on every table.
 |---|---|---|
 | id | uuid PK | |
 | start_date | date | the Saturday being played |
-| booking_deadline | timestamptz | confirm deadline: 4pm, 8 days before start_date (draw runs 4:02pm) |
+| booking_deadline | timestamptz | confirm deadline: 4pm, 8 days before start_date (draw runs 4:05pm) |
 | status | enum(`pending`,`draw_complete`,`booked`,`completed`,`cancelled`) | |
 | runt_player_id | uuid → players(id), nullable | the Runt responsible for this week |
 
@@ -189,7 +189,7 @@ Row-level security (RLS) will be enabled on every table.
   they hold booking slots and don't play. (An earlier draft had dropped them.)
 - **Guests** added (`guests` table): members invite non-registered people, who are
   drawn into the host's group and count toward its 4 slots.
-- Draw timing is **4:02pm, 8 days before** the Saturday (was "Friday 6pm").
+- Draw timing is **4:05pm, 8 days before** the Saturday (was "Friday 6pm").
 - Results source is the club **MiScore leaderboard**, not Golf Australia.
 
 ## Open question
