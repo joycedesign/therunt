@@ -39,6 +39,23 @@ const EVENT_EMOJIS = [
   '🎄', '🎂', '☕', '🔥',
 ];
 
+// Shared styling for the web date/time <input>s so they match the app's other
+// form fields (white field, dark text) with a green accent in the native popup.
+const webFieldStyle = {
+  fontSize: 16,
+  padding: '12px 14px',
+  borderRadius: 10,
+  border: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+  marginBottom: 12,
+  backgroundColor: '#ffffff',
+  color: '#0b3d2e',
+  accentColor: '#7fffb0',
+  colorScheme: 'light',
+  fontFamily: 'inherit',
+} as const;
+
 function hhmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -83,11 +100,10 @@ export default function AdminScreen({
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<'golf' | 'other'>('golf');
+  // For non-golf events this Date carries both date and time; for golf, date only.
   const [date, setDate] = useState<Date>(new Date());
   const [allowGuests, setAllowGuests] = useState(false);
   const [emoji, setEmoji] = useState('🎉');
-  const [hasTime, setHasTime] = useState(false);
-  const [time, setTime] = useState<Date>(new Date());
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -122,8 +138,6 @@ export default function AdminScreen({
     setDate(new Date());
     setAllowGuests(false);
     setEmoji('🎉');
-    setHasTime(false);
-    setTime(new Date());
     setError(null);
     setModalOpen(true);
   }
@@ -143,7 +157,7 @@ export default function AdminScreen({
       event_type: type,
       allow_guests: type === 'other' ? allowGuests : false,
       emoji: type === 'other' ? emoji : null,
-      event_time: hasTime ? hhmm(time) : null,
+      event_time: type === 'other' ? hhmm(date) : null,
       status: 'pending',
     });
     setBusy(false);
@@ -263,8 +277,12 @@ export default function AdminScreen({
               />
             </View>
 
-            <Text style={styles.label}>Date</Text>
-            <DatePicker value={date} onChange={setDate} />
+            <Text style={styles.label}>{type === 'other' ? 'Date & time' : 'Date'}</Text>
+            {type === 'other' ? (
+              <DateTimePickerField value={date} onChange={setDate} />
+            ) : (
+              <DatePicker value={date} onChange={setDate} />
+            )}
 
             {type === 'other' && (
               <>
@@ -280,20 +298,6 @@ export default function AdminScreen({
                     </TouchableOpacity>
                   ))}
                 </View>
-
-                <View style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>Add a time</Text>
-                  <Switch
-                    value={hasTime}
-                    onValueChange={setHasTime}
-                    trackColor={{ false: '#8a9a92', true: '#22c55e' }}
-                    thumbColor="#ffffff"
-                    ios_backgroundColor="#8a9a92"
-                    {...({ activeThumbColor: '#ffffff' } as object)}
-                    disabled={busy}
-                  />
-                </View>
-                {hasTime && <TimePicker value={time} onChange={setTime} />}
 
                 <View style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Allow guests</Text>
@@ -363,15 +367,7 @@ function DatePicker({ value, onChange }: { value: Date; onChange: (d: Date) => v
         if (!y) return;
         onChange(new Date(y, m - 1, d));
       },
-      style: {
-        fontSize: 16,
-        padding: 12,
-        borderRadius: 10,
-        border: 'none',
-        width: '100%',
-        boxSizing: 'border-box',
-        marginBottom: 4,
-      },
+      style: webFieldStyle,
     });
   }
   if (Platform.OS === 'ios') {
@@ -404,35 +400,30 @@ function DatePicker({ value, onChange }: { value: Date; onChange: (d: Date) => v
   );
 }
 
-function TimePicker({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
-  const [showAndroid, setShowAndroid] = useState(false);
+// Combined date + time in a single field (for non-golf events).
+function DateTimePickerField({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+  // Android has no one-shot datetime dialog: pick date, then time.
+  const [androidStep, setAndroidStep] = useState<'none' | 'date' | 'time'>('none');
   if (Platform.OS === 'web') {
+    const local = `${ymd(value)}T${hhmm(value)}`;
     return createElement('input', {
-      type: 'time',
-      value: hhmm(value),
+      type: 'datetime-local',
+      value: local,
       onChange: (e: { target: { value: string } }) => {
-        const [h, m] = e.target.value.split(':').map(Number);
-        if (Number.isNaN(h)) return;
-        const d = new Date(value);
-        d.setHours(h, m, 0, 0);
-        onChange(d);
+        const [datePart, timePart] = e.target.value.split('T');
+        if (!datePart || !timePart) return;
+        const [y, mo, d] = datePart.split('-').map(Number);
+        const [h, mi] = timePart.split(':').map(Number);
+        onChange(new Date(y, mo - 1, d, h, mi, 0, 0));
       },
-      style: {
-        fontSize: 16,
-        padding: 12,
-        borderRadius: 10,
-        border: 'none',
-        width: '100%',
-        boxSizing: 'border-box',
-        marginTop: 8,
-      },
+      style: webFieldStyle,
     });
   }
   if (Platform.OS === 'ios') {
     return (
       <DateTimePicker
         value={value}
-        mode="time"
+        mode="datetime"
         display="compact"
         onChange={(_e, d) => d && onChange(d)}
         themeVariant="dark"
@@ -441,17 +432,39 @@ function TimePicker({ value, onChange }: { value: Date; onChange: (d: Date) => v
   }
   return (
     <>
-      <TouchableOpacity style={styles.dateBtn} onPress={() => setShowAndroid(true)}>
-        <Text style={styles.dateBtnText}>{prettyTime(hhmm(value))} — tap to change</Text>
+      <TouchableOpacity style={styles.dateBtn} onPress={() => setAndroidStep('date')}>
+        <Text style={styles.dateBtnText}>
+          {prettyDate(ymd(value))}, {prettyTime(hhmm(value))} — tap to change
+        </Text>
       </TouchableOpacity>
-      {showAndroid && (
+      {androidStep === 'date' && (
+        <DateTimePicker
+          value={value}
+          mode="date"
+          onChange={(e, d) => {
+            if (e.type === 'set' && d) {
+              const merged = new Date(value);
+              merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+              onChange(merged);
+              setAndroidStep('time');
+            } else {
+              setAndroidStep('none');
+            }
+          }}
+        />
+      )}
+      {androidStep === 'time' && (
         <DateTimePicker
           value={value}
           mode="time"
           is24Hour={false}
           onChange={(e, d) => {
-            setShowAndroid(false);
-            if (e.type === 'set' && d) onChange(d);
+            setAndroidStep('none');
+            if (e.type === 'set' && d) {
+              const merged = new Date(value);
+              merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+              onChange(merged);
+            }
           }}
         />
       )}
