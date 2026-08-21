@@ -24,6 +24,8 @@ import { bookGroup, unbookGroup } from '../lib/booking';
 import { logChange } from '../lib/changelog';
 import TeeTimeModal from '../components/TeeTimeModal';
 import GroupEditor from './GroupEditor';
+import RuntCard from './RuntCard';
+import { useSettings } from '../lib/useSettings';
 import type { Player } from '../lib/useAuth';
 
 type Week = {
@@ -104,6 +106,7 @@ export default function AvailabilityScreen({
   player: Player | null;
   header?: ReactNode;
 }) {
+  const { organiserName } = useSettings();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [weeks, setWeeks] = useState<Week[]>([]);
@@ -701,6 +704,7 @@ export default function AvailabilityScreen({
         }
       >
         {header}
+        <RuntCard player={player} organiserName={organiserName} />
         <Text style={styles.heading}>Which Saturdays are you in?</Text>
 
         {error && !addingFor && <Text style={styles.error}>⚠️ {error}</Text>}

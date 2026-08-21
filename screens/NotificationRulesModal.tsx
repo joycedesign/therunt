@@ -21,13 +21,19 @@ import { supabase } from '../lib/supabase';
 
 type Rule = {
   id: string;
-  kind: 'availability_reminder' | 'deadline_reminder' | 'groups_drawn' | 'tee_booked' | 'custom';
+  kind:
+    | 'availability_reminder'
+    | 'deadline_reminder'
+    | 'groups_drawn'
+    | 'tee_booked'
+    | 'runt_select'
+    | 'custom';
   title: string;
   body: string;
   enabled: boolean;
   anchor: 'deadline' | 'game' | null;
   offset_minutes: number | null;
-  audience: 'all' | 'in' | 'group';
+  audience: 'all' | 'in' | 'group' | 'runt';
 };
 
 const KIND_LABEL: Record<Rule['kind'], string> = {
@@ -35,6 +41,7 @@ const KIND_LABEL: Record<Rule['kind'], string> = {
   deadline_reminder: 'Deadline reminder',
   groups_drawn: 'Groups drawn',
   tee_booked: 'Tee time booked',
+  runt_select: 'Pick the organiser',
   custom: 'Custom',
 };
 
@@ -42,13 +49,18 @@ const AUDIENCE_LABEL: Record<Rule['audience'], string> = {
   all: 'Everyone',
   in: "Who's in",
   group: "Group's players",
+  runt: 'The organiser',
 };
 
 // A rule is time-based (schedulable) when it has an anchor.
 const isTimed = (r: Pick<Rule, 'anchor'>) => r.anchor != null;
 
 function timingSummary(r: Rule): string {
-  if (!isTimed(r)) return r.kind === 'tee_booked' ? 'When booked' : 'When drawn';
+  if (!isTimed(r)) {
+    if (r.kind === 'tee_booked') return 'When booked';
+    if (r.kind === 'runt_select') return '6pm after the game';
+    return 'When drawn';
+  }
   const mins = Math.abs(r.offset_minutes ?? 0);
   const anchor = r.anchor === 'game' ? 'game' : 'deadline';
   if (mins === 0) return `At ${anchor}`;
@@ -250,7 +262,7 @@ function RuleEditor({
             editable={!busy}
           />
           <Text style={styles.placeholders}>
-            Placeholders: {'{date}'} {'{deadline}'} {'{teetime}'} {'{tee}'} {'{group}'}
+            Placeholders: {'{date}'} {'{deadline}'} {'{teetime}'} {'{tee}'} {'{group}'} {'{organiser}'}
           </Text>
 
           {isTimed(rule) && (
@@ -281,9 +293,9 @@ function RuleEditor({
 
           <Text style={styles.label}>Send to</Text>
           <Seg
-            options={['all', 'in', 'group'] as const}
+            options={['all', 'in', 'group', 'runt'] as const}
             value={rule.audience}
-            labels={{ all: 'Everyone', in: "Who's in", group: 'Group' }}
+            labels={{ all: 'Everyone', in: "Who's in", group: 'Group', runt: 'Organiser' }}
             onPick={(a) => onChange({ ...rule, audience: a })}
           />
 
