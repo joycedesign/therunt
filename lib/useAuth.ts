@@ -16,6 +16,7 @@ export type Player = {
   status: 'active' | 'inactive' | 'blocked';
   default_available: boolean;
   is_admin: boolean;
+  is_super_admin: boolean;
 };
 
 export type AuthState = {
@@ -61,7 +62,9 @@ export function useAuth(): AuthState {
     }
     const { data } = await supabase
       .from('players')
-      .select('id, email, name, preferred_name, membership_number, status, default_available, is_admin')
+      .select(
+        'id, email, name, preferred_name, membership_number, status, default_available, is_admin, is_super_admin'
+      )
       .eq('auth_user_id', userId)
       .maybeSingle();
     setPlayer((data as Player | null) ?? null);

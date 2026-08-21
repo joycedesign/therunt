@@ -21,6 +21,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
 import type { Player } from '../lib/useAuth';
+import NotificationRulesModal from './NotificationRulesModal';
 
 type EventRow = {
   id: string;
@@ -92,6 +93,8 @@ export default function AdminScreen({
   header?: ReactNode;
 }) {
   const isAdmin = player?.is_admin ?? false;
+  const isSuperAdmin = player?.is_super_admin ?? false;
+  const [notifOpen, setNotifOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -245,7 +248,23 @@ export default function AdminScreen({
         <Text style={styles.hint}>
           Events appear on the Availability tab by name instead of a date.
         </Text>
+
+        {isSuperAdmin && (
+          <>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.sectionHeading}>Notifications</Text>
+            <TouchableOpacity style={styles.manageRow} onPress={() => setNotifOpen(true)}>
+              <View style={styles.rowText}>
+                <Text style={styles.name}>Notification schedule</Text>
+                <Text style={styles.sub}>Manage the push notifications the app sends</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
+
+      {notifOpen && <NotificationRulesModal onClose={() => setNotifOpen(false)} />}
 
       <Modal
         visible={modalOpen}
@@ -495,6 +514,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   rowText: { flex: 1, paddingRight: 12 },
+  sectionDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginVertical: 18 },
+  sectionHeading: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  manageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  chevron: { color: '#7fffb0', fontSize: 22, fontWeight: '700' },
   name: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   badge: { color: '#9fc6b3', fontSize: 13, fontWeight: '400' },
   sub: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
