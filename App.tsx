@@ -8,8 +8,17 @@ import OnboardingScreen from './screens/OnboardingScreen';
 import SetPasswordScreen from './screens/SetPasswordScreen';
 import LockScreen from './screens/LockScreen';
 import SignedIn from './screens/SignedIn';
+import { SettingsProvider } from './lib/useSettings';
 
 export default function App() {
+  return (
+    <SettingsProvider>
+      <AppInner />
+    </SettingsProvider>
+  );
+}
+
+function AppInner() {
   const { loading, checkingProfile, recovery, endRecovery, session, player, refreshPlayer } =
     useAuth();
   const lock = useBiometricLock(loading, !!session);

@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../lib/supabase';
+import { useSettings } from '../lib/useSettings';
 import type { Player } from '../lib/useAuth';
 import NotificationRulesModal from './NotificationRulesModal';
 
@@ -94,7 +95,11 @@ export default function AdminScreen({
 }) {
   const isAdmin = player?.is_admin ?? false;
   const isSuperAdmin = player?.is_super_admin ?? false;
+  const { organiserName } = useSettings();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [orgName, setOrgName] = useState(organiserName);
+  const [orgBusy, setOrgBusy] = useState(false);
+  const [orgSaved, setOrgSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -129,10 +134,29 @@ export default function AdminScreen({
     void load().finally(() => setLoading(false));
   }, [load]);
 
+  // Re-seed the input when the stored organiser name changes (e.g. after save).
+  useEffect(() => {
+    setOrgName(organiserName);
+  }, [organiserName]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  }
+
+  async function saveOrganiser() {
+    if (!supabase) return;
+    setOrgBusy(true);
+    setOrgSaved(false);
+    setError(null);
+    const { error: e } = await supabase
+      .from('settings')
+      .update({ organiser_name: orgName.trim() || 'The Runt' })
+      .eq('singleton', true);
+    setOrgBusy(false);
+    if (e) setError(e.message);
+    else setOrgSaved(true);
   }
 
   function openCreate() {
@@ -251,6 +275,36 @@ export default function AdminScreen({
 
         {isSuperAdmin && (
           <>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.sectionHeading}>Personalisation</Text>
+            <Text style={styles.label}>Organiser name (the weekly role)</Text>
+            <TextInput
+              style={styles.input}
+              value={orgName}
+              onChangeText={(t) => {
+                setOrgName(t);
+                setOrgSaved(false);
+              }}
+              placeholder="e.g. The Runt"
+              placeholderTextColor="#7fa392"
+              editable={!orgBusy}
+            />
+            <Text style={styles.sub}>
+              The label for whoever organises each week. The app name (“The Runt”) is separate
+              and unchanged.
+            </Text>
+            <TouchableOpacity
+              style={[styles.saveBtn, styles.orgSaveBtn, orgBusy && styles.disabled]}
+              onPress={saveOrganiser}
+              disabled={orgBusy}
+            >
+              {orgBusy ? (
+                <ActivityIndicator color="#0b3d2e" />
+              ) : (
+                <Text style={styles.saveBtnText}>{orgSaved ? 'Saved ✓' : 'Save'}</Text>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.sectionDivider} />
             <Text style={styles.sectionHeading}>Notifications</Text>
             <TouchableOpacity style={styles.manageRow} onPress={() => setNotifOpen(true)}>
@@ -526,6 +580,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   chevron: { color: '#7fffb0', fontSize: 22, fontWeight: '700' },
+  orgSaveBtn: { marginTop: 12, marginBottom: 4, alignSelf: 'flex-start', paddingHorizontal: 28 },
   name: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   badge: { color: '#9fc6b3', fontSize: 13, fontWeight: '400' },
   sub: { color: '#9fc6b3', fontSize: 12, marginTop: 2 },
