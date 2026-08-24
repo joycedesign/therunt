@@ -35,6 +35,7 @@
     "web": "expo start --web",
     "deploy:web": "expo export --platform web && eas deploy --prod --non-interactive",
     "deploy:go": "eas update --branch preview --message \"update\" --non-interactive",
+    "deploy:prod": "eas update --branch production --message \"update\" --non-interactive",
     "deploy": "npm run deploy:web && npm run deploy:go"
   },
   "private": true
