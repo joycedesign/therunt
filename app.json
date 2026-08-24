@@ -34,6 +34,12 @@
         {
           "faceIDPermission": "Use Face ID to unlock The Runt."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0b3d2e"
+        }
       ]
     ],
     "extra": {

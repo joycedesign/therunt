@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
+import { registerForPush } from './lib/push';
 import { useBiometricLock } from './lib/useBiometricLock';
 import SignInScreen from './screens/SignInScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
@@ -22,6 +24,11 @@ function AppInner() {
   const { loading, checkingProfile, recovery, endRecovery, session, player, refreshPlayer } =
     useAuth();
   const lock = useBiometricLock(loading, !!session);
+
+  // Register this device for push once the member is signed in (native only).
+  useEffect(() => {
+    if (player?.id) void registerForPush(player.id);
+  }, [player?.id]);
 
   if (!isSupabaseConfigured) {
     return (
