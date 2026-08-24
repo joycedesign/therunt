@@ -6,6 +6,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -50,6 +51,9 @@ export default function ProfileScreen({ player, email, onProfileSaved, header }:
   const [newPassword, setNewPassword] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
   const [pwSaved, setPwSaved] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     setName(player?.name ?? '');
@@ -107,6 +111,21 @@ export default function ProfileScreen({ player, email, onProfileSaved, header }:
     }
     setPwSaved(true);
     setNewPassword('');
+  }
+
+  async function deleteAccount() {
+    if (!supabase) return;
+    setDeleteBusy(true);
+    setError(null);
+    const { error } = await supabase.rpc('delete_my_account');
+    if (error) {
+      setDeleteBusy(false);
+      setDeleteOpen(false);
+      setError(error.message);
+      return;
+    }
+    // Account (incl. auth user) is gone — sign out returns to the sign-in screen.
+    await supabase.auth.signOut();
   }
 
   async function changeDefault(value: boolean) {
@@ -273,7 +292,48 @@ export default function ProfileScreen({ player, email, onProfileSaved, header }:
       )}
 
       {error && <Text style={styles.error}>⚠️ {error}</Text>}
+
+      <View style={styles.divider} />
+      <Text style={styles.label}>Delete account</Text>
+      <Text style={styles.help}>
+        Permanently remove your profile and all your data. This cannot be undone.
+      </Text>
+      <TouchableOpacity style={styles.deleteBtn} onPress={() => setDeleteOpen(true)}>
+        <Text style={styles.deleteBtnText}>Delete my account</Text>
+      </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={deleteOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleteBusy && setDeleteOpen(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Delete your account?</Text>
+            <Text style={styles.confirmBody}>
+              This permanently deletes your profile, availability, and login. It can’t be undone.
+            </Text>
+            <View style={styles.confirmRow}>
+              <TouchableOpacity onPress={() => setDeleteOpen(false)} disabled={deleteBusy}>
+                <Text style={styles.cancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteBtn, styles.confirmDelete, deleteBusy && styles.disabled]}
+                onPress={deleteAccount}
+                disabled={deleteBusy}
+              >
+                {deleteBusy ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={[styles.deleteBtnText, styles.confirmDeleteText]}>Delete forever</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -314,6 +374,43 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   help: { color: '#9fc6b3', fontSize: 13, lineHeight: 18, marginTop: 6 },
+  deleteBtn: {
+    borderWidth: 1,
+    borderColor: '#ff9b9b',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  deleteBtnText: { color: '#ff9b9b', fontSize: 15, fontWeight: '700' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmCard: {
+    backgroundColor: '#0f4a39',
+    borderRadius: 14,
+    padding: 20,
+    width: '100%',
+    maxWidth: 360,
+  },
+  confirmTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  confirmBody: { color: '#dff3e8', fontSize: 14, lineHeight: 20 },
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 18,
+    marginTop: 20,
+  },
+  cancel: { color: '#bfe3d0', fontSize: 15 },
+  confirmDelete: { marginTop: 0, backgroundColor: '#c0392b', borderColor: '#c0392b' },
+  confirmDeleteText: { color: '#ffffff' },
+  disabled: { opacity: 0.6 },
   defaultRow: {
     flexDirection: 'row',
     alignItems: 'center',
