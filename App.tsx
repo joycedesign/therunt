@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth } from './lib/useAuth';
 import { registerForPush } from './lib/push';
@@ -12,11 +12,58 @@ import LockScreen from './screens/LockScreen';
 import SignedIn from './screens/SignedIn';
 import { SettingsProvider } from './lib/useSettings';
 
+// TEMPORARY: surface any startup error on-screen (render errors via the
+// boundary, uncaught errors via the polled global catcher). Remove once fixed.
+function ErrorView({ msg }: { msg: string }) {
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#3a0d0d' }}
+      contentContainerStyle={{ padding: 24, paddingTop: 80 }}
+    >
+      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12 }}>
+        Startup error
+      </Text>
+      <Text selectable style={{ color: '#ffd2d2', fontSize: 12, lineHeight: 18 }}>
+        {msg}
+      </Text>
+    </ScrollView>
+  );
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { msg: string | null }> {
+  state = { msg: null as string | null };
+  static getDerivedStateFromError(e: unknown) {
+    const err = e as { stack?: string; message?: string };
+    return { msg: err?.stack || err?.message || String(e) };
+  }
+  render() {
+    if (this.state.msg) return <ErrorView msg={this.state.msg} />;
+    return this.props.children;
+  }
+}
+
+function GlobalErrorWatcher({ children }: { children: ReactNode }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const g = global as unknown as { __STARTUP_ERROR__?: string };
+      if (g.__STARTUP_ERROR__) setMsg(g.__STARTUP_ERROR__);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (msg) return <ErrorView msg={msg} />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
-    <SettingsProvider>
-      <AppInner />
-    </SettingsProvider>
+    <ErrorBoundary>
+      <GlobalErrorWatcher>
+        <SettingsProvider>
+          <AppInner />
+        </SettingsProvider>
+      </GlobalErrorWatcher>
+    </ErrorBoundary>
   );
 }
 
