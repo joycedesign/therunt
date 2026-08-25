@@ -53,7 +53,8 @@
     "owner": "joycedesign",
     "runtimeVersion": "exposdk:54.0.0",
     "updates": {
-      "url": "https://u.expo.dev/72e0d738-042f-45ed-af66-64e9e56c16eb"
+      "url": "https://u.expo.dev/72e0d738-042f-45ed-af66-64e9e56c16eb",
+      "enabled": false
     }
   }
 }
